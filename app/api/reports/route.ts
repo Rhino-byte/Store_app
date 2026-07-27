@@ -55,8 +55,8 @@ export async function GET(request: Request) {
       period: periodParam,
       from: range.from,
       to: range.to,
-      stockIn: reportStockInTotals(filtered),
-      stockOut: reportStockOutTotals(filtered),
+      stockIn: reportStockInTotals(filtered, items),
+      stockOut: reportStockOutTotals(filtered, items),
       stockBalance: reportStockBalanceRows(
         items,
         transactions,
