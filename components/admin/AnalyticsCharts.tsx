@@ -13,40 +13,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useIsMobile } from "@/lib/use-media-query";
 
 interface AnalyticsChartsProps {
-  categoryStock: Array<{ category: string; stock: number }>;
   topConsumed: Array<{ itemId: string; itemName: string; quantity: number }>;
 }
 
-export function AnalyticsCharts({
-  categoryStock,
-  topConsumed,
-}: AnalyticsChartsProps) {
+export function AnalyticsCharts({ topConsumed }: AnalyticsChartsProps) {
   const isMobile = useIsMobile();
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle>Stock by category</CardTitle>
-        </CardHeader>
-        <CardContent className="h-64 sm:h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={categoryStock}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="category" hide={categoryStock.length > 8} />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="stock" fill="#047857" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Top consumed items</CardTitle>
-        </CardHeader>
-        <CardContent className="h-64 sm:h-80">
+    <Card>
+      <CardHeader>
+        <CardTitle>Top consumed items</CardTitle>
+        <p className="text-sm font-normal text-slate-500">
+          Highest total stock-out across all categories in the selected range.
+        </p>
+      </CardHeader>
+      <CardContent className="h-64 sm:h-80">
+        {!topConsumed.length ? (
+          <p className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+            No consumption in this period.
+          </p>
+        ) : (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={topConsumed} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" />
@@ -61,8 +47,8 @@ export function AnalyticsCharts({
               <Bar dataKey="quantity" fill="#b45309" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </CardContent>
-      </Card>
-    </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
