@@ -43,8 +43,7 @@ export async function POST(request: Request) {
         if (!isStockDestination(body.destination)) {
           return NextResponse.json(
             {
-              error:
-                "Destination must be Charity Work, Office, Kitchen, or House Keeping.",
+              error: `Destination must be one of: ${STOCK_DESTINATIONS.join(", ")}.`,
             },
             { status: 400 }
           );

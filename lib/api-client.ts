@@ -1,5 +1,5 @@
 import type { DailyStockItem } from "@/lib/analytics";
-import type { InventoryItem } from "@/lib/types";
+import type { InventoryItem, StockDestination } from "@/lib/types";
 import { getFirebaseAuthHeader } from "@/lib/auth/use-firebase-auth";
 
 export async function fetchInventory(): Promise<InventoryItem[]> {
@@ -17,7 +17,7 @@ export async function submitStockMovement(payload: {
   type: "in" | "out";
   quantity: number;
   notes?: string;
-  destination?: "Charity Work" | "Office" | "Kitchen" | "House Keeping";
+  destination?: StockDestination;
 }) {
   const headers = await getFirebaseAuthHeader();
   const response = await fetch("/api/stock", {
