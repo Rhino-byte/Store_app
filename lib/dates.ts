@@ -68,6 +68,22 @@ export function rollingDateRange(
   return { from: addCalendarDays(to, -(days - 1)), to };
 }
 
+/**
+ * Immediately preceding window of equal length to `rollingDateRange(days)`.
+ * days <= 0 is treated as today-only (span 1), matching filterTransactionsByDays.
+ */
+export function previousRollingDateRange(
+  days: number,
+  now = new Date()
+): { from: string; to: string } {
+  const span = days <= 0 ? 1 : days;
+  const current = rollingDateRange(span, now);
+  return {
+    from: addCalendarDays(current.from, -span),
+    to: addCalendarDays(current.to, -span),
+  };
+}
+
 export function isDateKeyInRange(
   dateKey: string,
   fromKey: string,

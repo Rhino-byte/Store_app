@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AdminDailyStockSection } from "@/components/admin/AdminDailyStockSection";
 import { AnalyticsCharts } from "@/components/admin/AnalyticsCharts";
+import { ItemUsageCompareChart } from "@/components/admin/ItemUsageCompareChart";
+import { PeriodComparisonChart } from "@/components/admin/PeriodComparisonChart";
+import { TopUsedDailyChart } from "@/components/admin/TopUsedDailyChart";
 import { UserActivityChart } from "@/components/admin/UserActivityChart";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/ui/loading-state";
+import type { AnalyticsPayload } from "@/lib/api-client";
 import { fetchAnalytics } from "@/lib/api-client";
-import type { UserActivitySeries } from "@/lib/analytics";
 import { getFirebaseAuthHeader } from "@/lib/auth/use-firebase-auth";
 import { todayDateKey } from "@/lib/dates";
 
@@ -22,12 +25,10 @@ const RANGE_OPTIONS = [
 export function AnalyticsPageClient() {
   const [days, setDays] = useState(30);
   const [selectedDate, setSelectedDate] = useState(() => todayDateKey());
+  const [category, setCategory] = useState("all");
+  const [compareItemIds, setCompareItemIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<{
-    categoryStock: Array<{ category: string; stock: number }>;
-    topConsumed: Array<{ itemId: string; itemName: string; quantity: number }>;
-    userActivity: UserActivitySeries;
-  } | null>(null);
+  const [data, setData] = useState<AnalyticsPayload | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -35,19 +36,34 @@ export function AnalyticsPageClient() {
       try {
         const headers = await getFirebaseAuthHeader();
         const analytics = await fetchAnalytics(days, headers);
-        setData({
-          categoryStock: analytics.categoryStock,
-          topConsumed: analytics.topConsumed,
-          userActivity: analytics.userActivity ?? { users: [], points: [] },
+        setData(analytics);
+        setCategory((prev) => {
+          if (prev === "all") return prev;
+          return analytics.categories.includes(prev) ? prev : "all";
+        });
+        setCompareItemIds((prev) => {
+          const valid = new Set(
+            analytics.inventoryOptions.map((o) => o.itemId)
+          );
+          return prev.filter((id) => valid.has(id));
         });
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to load analytics");
+        toast.error(
+          error instanceof Error ? error.message : "Failed to load analytics"
+        );
       } finally {
         setLoading(false);
       }
     }
     load();
   }, [days]);
+
+  const topDaily =
+    data?.topConsumedDailyByCategory?.[category] ??
+    data?.topConsumedDailyByCategory?.all;
+  const periodSeries =
+    data?.periodComparisonByCategory?.[category] ??
+    data?.periodComparisonByCategory?.all;
 
   return (
     <div className="space-y-6">
@@ -70,10 +86,27 @@ export function AnalyticsPageClient() {
           className="min-h-[40vh]"
         />
       ) : (
-        <AnalyticsCharts
-          categoryStock={data.categoryStock}
-          topConsumed={data.topConsumed}
-        />
+        <>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <TopUsedDailyChart
+              categories={data.categories}
+              category={category}
+              onCategoryChange={setCategory}
+              series={topDaily}
+            />
+            <AnalyticsCharts topConsumed={data.topConsumed} />
+          </div>
+
+          <PeriodComparisonChart series={periodSeries} category={category} />
+
+          <ItemUsageCompareChart
+            options={data.inventoryOptions}
+            selectedIds={compareItemIds}
+            onSelectedIdsChange={setCompareItemIds}
+            weekly={data.weeklyItemOuts}
+            pageDays={days}
+          />
+        </>
       )}
 
       <AdminDailyStockSection

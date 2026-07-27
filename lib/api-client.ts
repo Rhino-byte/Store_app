@@ -1,6 +1,40 @@
-import type { DailyStockItem } from "@/lib/analytics";
-import type { InventoryItem, StockDestination } from "@/lib/types";
+import type {
+  DailyItemSeries,
+  DailyStockItem,
+  InventoryOption,
+  PeriodComparisonSeries,
+  UserActivitySeries,
+  WeeklyItemOutMatrix,
+} from "@/lib/analytics";
+import type {
+  DashboardStats,
+  InventoryItem,
+  StockDestination,
+  Transaction,
+} from "@/lib/types";
 import { getFirebaseAuthHeader } from "@/lib/auth/use-firebase-auth";
+
+export type AnalyticsPayload = {
+  stats: DashboardStats;
+  lowStockItems: InventoryItem[];
+  categoryStock: Array<{ category: string; stock: number }>;
+  topConsumed: Array<{ itemId: string; itemName: string; quantity: number }>;
+  dailyMovement: Array<{ date: string; in: number; out: number }>;
+  itemMovement: Array<{
+    itemId: string;
+    itemName: string;
+    in: number;
+    out: number;
+    net: number;
+  }>;
+  userActivity: UserActivitySeries;
+  transactions: Transaction[];
+  categories: string[];
+  inventoryOptions: InventoryOption[];
+  topConsumedDailyByCategory: Record<string, DailyItemSeries>;
+  periodComparisonByCategory: Record<string, PeriodComparisonSeries>;
+  weeklyItemOuts: WeeklyItemOutMatrix;
+};
 
 export async function fetchInventory(): Promise<InventoryItem[]> {
   const headers = await getFirebaseAuthHeader();
@@ -71,7 +105,10 @@ export async function fetchReport(params: {
   return data;
 }
 
-export async function fetchAnalytics(days: number, headers: HeadersInit) {
+export async function fetchAnalytics(
+  days: number,
+  headers: HeadersInit
+): Promise<AnalyticsPayload> {
   const response = await fetch(`/api/analytics?days=${days}`, {
     headers,
     cache: "no-store",
@@ -80,7 +117,7 @@ export async function fetchAnalytics(days: number, headers: HeadersInit) {
   if (!response.ok) {
     throw new Error(data.error ?? "Failed to load analytics");
   }
-  return data;
+  return data as AnalyticsPayload;
 }
 
 export async function createItem(
