@@ -108,7 +108,33 @@ export type ReportDestinationTotal = {
   quantity: number;
 };
 
-export function reportStockInTotals(transactions: Transaction[]): ReportStockInRow[] {
+/** Sheet row order keyed by Item ID (matches Google Sheet top-to-bottom). */
+export function sheetItemOrder(items: InventoryItem[]): Map<string, number> {
+  const order = new Map<string, number>();
+  items.forEach((item, index) => {
+    order.set(item.itemId, index);
+  });
+  return order;
+}
+
+function compareBySheetOrder(
+  aId: string,
+  bId: string,
+  order: Map<string, number>
+): number {
+  const aIndex = order.get(aId);
+  const bIndex = order.get(bId);
+  if (aIndex !== undefined && bIndex !== undefined) return aIndex - bIndex;
+  if (aIndex !== undefined) return -1;
+  if (bIndex !== undefined) return 1;
+  return aId.localeCompare(bId, undefined, { numeric: true });
+}
+
+export function reportStockInTotals(
+  transactions: Transaction[],
+  items: InventoryItem[] = []
+): ReportStockInRow[] {
+  const order = sheetItemOrder(items);
   const totals = new Map<string, { itemName: string; stockIn: number }>();
   for (const tx of transactions) {
     if (tx.type !== "in") continue;
@@ -122,10 +148,14 @@ export function reportStockInTotals(transactions: Transaction[]): ReportStockInR
       itemName: values.itemName,
       stockIn: values.stockIn,
     }))
-    .sort((a, b) => a.itemName.localeCompare(b.itemName));
+    .sort((a, b) => compareBySheetOrder(a.itemId, b.itemId, order));
 }
 
-export function reportStockOutTotals(transactions: Transaction[]): ReportStockOutRow[] {
+export function reportStockOutTotals(
+  transactions: Transaction[],
+  items: InventoryItem[] = []
+): ReportStockOutRow[] {
+  const order = sheetItemOrder(items);
   const totals = new Map<
     string,
     { itemId: string; itemName: string; stockOut: number; destination: string }
@@ -146,8 +176,8 @@ export function reportStockOutTotals(transactions: Transaction[]): ReportStockOu
   }
 
   return Array.from(totals.values()).sort((a, b) => {
-    const byName = a.itemName.localeCompare(b.itemName);
-    if (byName !== 0) return byName;
+    const bySheet = compareBySheetOrder(a.itemId, b.itemId, order);
+    if (bySheet !== 0) return bySheet;
     return a.destination.localeCompare(b.destination);
   });
 }
@@ -172,6 +202,8 @@ export function reportDestinationTotals(
  * Stock In/Out = sums in [from, to]
  * Total = Opening + Stock In
  * Closing = Total - Stock Out
+ *
+ * Rows follow inventory sheet order (Item ID / row position).
  */
 export function reportStockBalanceRows(
   items: InventoryItem[],
@@ -187,48 +219,39 @@ export function reportStockBalanceRows(
     byItem.set(tx.itemId, list);
   }
 
-  return items
-    .map((item) => {
-      const txs = byItem.get(item.itemId) ?? [];
-      let priorIn = 0;
-      let priorOut = 0;
-      let periodIn = 0;
-      let periodOut = 0;
+  // `items` from getInventoryItems() is already in sheet row order.
+  return items.map((item) => {
+    const txs = byItem.get(item.itemId) ?? [];
+    let priorIn = 0;
+    let priorOut = 0;
+    let periodIn = 0;
+    let periodOut = 0;
 
-      for (const tx of txs) {
-        const day = transactionDateKey(tx.timestamp);
-        if (!day) continue;
-        if (day < fromKey) {
-          if (tx.type === "in") priorIn += tx.quantity;
-          else if (tx.type === "out") priorOut += tx.quantity;
-        } else if (day <= toKey) {
-          if (tx.type === "in") periodIn += tx.quantity;
-          else if (tx.type === "out") periodOut += tx.quantity;
-        }
+    for (const tx of txs) {
+      const day = transactionDateKey(tx.timestamp);
+      if (!day) continue;
+      if (day < fromKey) {
+        if (tx.type === "in") priorIn += tx.quantity;
+        else if (tx.type === "out") priorOut += tx.quantity;
+      } else if (day <= toKey) {
+        if (tx.type === "in") periodIn += tx.quantity;
+        else if (tx.type === "out") periodOut += tx.quantity;
       }
+    }
 
-      const opening = item.openingStock + priorIn - priorOut;
-      const total = opening + periodIn;
-      const closing = total - periodOut;
+    const opening = item.openingStock + priorIn - priorOut;
+    const total = opening + periodIn;
+    const closing = total - periodOut;
 
-      return {
-        itemId: item.itemId,
-        itemName: item.itemName,
-        unit: item.unit,
-        opening,
-        stockIn: periodIn,
-        stockOut: periodOut,
-        total,
-        closing,
-      };
-    })
-    .sort((a, b) => {
-      const aActive =
-        a.stockIn !== 0 || a.stockOut !== 0 || a.opening !== 0 || a.closing !== 0;
-      const bActive =
-        b.stockIn !== 0 || b.stockOut !== 0 || b.opening !== 0 || b.closing !== 0;
-      if (aActive && !bActive) return -1;
-      if (!aActive && bActive) return 1;
-      return a.itemName.localeCompare(b.itemName);
-    });
+    return {
+      itemId: item.itemId,
+      itemName: item.itemName,
+      unit: item.unit,
+      opening,
+      stockIn: periodIn,
+      stockOut: periodOut,
+      total,
+      closing,
+    };
+  });
 }
