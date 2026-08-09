@@ -4,9 +4,14 @@ import {
   dailyMovementTotals,
   filterTransactionsByDays,
   groupStockByCategory,
+  inventoryOptions,
   itemMovementTotals,
+  listCategories,
+  periodComparisonByAllCategories,
+  topConsumedDailyByAllCategories,
   topConsumedItems,
   userActivityByDay,
+  weeklyItemOutMatrix,
 } from "@/lib/analytics";
 import { requireAdmin } from "@/lib/auth/api-auth";
 import { getInventoryItems, getTransactions } from "@/lib/sheets";
@@ -34,6 +39,20 @@ export async function GET(request: Request) {
       itemMovement: itemMovementTotals(filtered),
       userActivity: userActivityByDay(filtered, days),
       transactions: filtered,
+      categories: listCategories(items),
+      inventoryOptions: inventoryOptions(items),
+      topConsumedDailyByCategory: topConsumedDailyByAllCategories(
+        transactions,
+        items,
+        days,
+        5
+      ),
+      periodComparisonByCategory: periodComparisonByAllCategories(
+        transactions,
+        items,
+        days
+      ),
+      weeklyItemOuts: weeklyItemOutMatrix(transactions, days),
     });
   } catch (error) {
     if (error instanceof Response) return error;

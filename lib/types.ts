@@ -15,10 +15,11 @@ export interface InventoryItem {
 export type StockMovementType = "in" | "out";
 
 export const STOCK_DESTINATIONS = [
-  "Charity Work",
-  "Office",
+  "Mum",
+  "Hotel",
   "Kitchen",
   "House Keeping",
+  "Order"
 ] as const;
 
 export type StockDestination = (typeof STOCK_DESTINATIONS)[number];
