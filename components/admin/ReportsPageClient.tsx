@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { fetchReport } from "@/lib/api-client";
 import type {
+  ReportCorrectionsSummary,
   ReportDestinationTotal,
   ReportPeriod,
   ReportStockBalanceRow,
@@ -71,6 +72,7 @@ type ReportData = {
   stockOut: ReportStockOutRow[];
   stockBalance: ReportStockBalanceRow[];
   destinationTotals: ReportDestinationTotal[];
+  correctionsSummary?: ReportCorrectionsSummary;
 };
 
 function EmptyBlock({ message }: { message: string }) {
@@ -404,8 +406,42 @@ export function ReportsPageClient() {
                   </h2>
                   <p className="text-sm text-slate-500">
                     Opening → Stock In → Total (Opening + Stock In) → Stock Out →
-                    Closing (Total − Stock Out).
+                    Closing (Total − Stock Out). Includes admin Corrections
+                    deltas in Opening / In / Out.
                   </p>
+                  {data.correctionsSummary &&
+                    data.correctionsSummary.count > 0 && (
+                      <Card>
+                        <CardContent className="grid gap-3 p-4 sm:grid-cols-3">
+                          <div>
+                            <p className="text-sm text-slate-500">
+                              Corrections in period
+                            </p>
+                            <p className="text-lg font-semibold text-slate-900">
+                              {data.correctionsSummary.count}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-slate-500">
+                              Correction stock in
+                            </p>
+                            <p className="text-lg font-semibold text-slate-900">
+                              {formatNumber(data.correctionsSummary.correctionIn)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-slate-500">
+                              Correction stock out
+                            </p>
+                            <p className="text-lg font-semibold text-slate-900">
+                              {formatNumber(
+                                data.correctionsSummary.correctionOut
+                              )}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
                   <StockBalanceTable rows={data.stockBalance} />
                 </section>
               )}

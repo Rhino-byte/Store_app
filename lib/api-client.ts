@@ -1,39 +1,36 @@
 import type {
+  DailyInOutPoint,
   DailyItemSeries,
   DailyStockItem,
+  DestinationTotal,
   InventoryOption,
+  ItemOutMatrix,
   PeriodComparisonSeries,
+  StockHealthSnapshot,
   UserActivitySeries,
-  WeeklyItemOutMatrix,
 } from "@/lib/analytics";
 import type {
   DashboardStats,
   InventoryItem,
   StockDestination,
-  Transaction,
 } from "@/lib/types";
 import { getFirebaseAuthHeader } from "@/lib/auth/use-firebase-auth";
 
 export type AnalyticsPayload = {
   stats: DashboardStats;
+  stockHealth: StockHealthSnapshot;
   lowStockItems: InventoryItem[];
-  categoryStock: Array<{ category: string; stock: number }>;
-  topConsumed: Array<{ itemId: string; itemName: string; quantity: number }>;
-  dailyMovement: Array<{ date: string; in: number; out: number }>;
-  itemMovement: Array<{
-    itemId: string;
-    itemName: string;
-    in: number;
-    out: number;
-    net: number;
-  }>;
-  userActivity: UserActivitySeries;
-  transactions: Transaction[];
   categories: string[];
+  destinations: string[];
+  category: string;
+  destination: string;
   inventoryOptions: InventoryOption[];
-  topConsumedDailyByCategory: Record<string, DailyItemSeries>;
-  periodComparisonByCategory: Record<string, PeriodComparisonSeries>;
-  weeklyItemOuts: WeeklyItemOutMatrix;
+  dailyMovement: DailyInOutPoint[];
+  destinationTotals: DestinationTotal[];
+  topConsumedDaily: DailyItemSeries;
+  periodComparison: PeriodComparisonSeries;
+  itemOuts: ItemOutMatrix;
+  userActivity: UserActivitySeries;
 };
 
 export async function fetchInventory(): Promise<InventoryItem[]> {
@@ -107,9 +104,14 @@ export async function fetchReport(params: {
 
 export async function fetchAnalytics(
   days: number,
-  headers: HeadersInit
+  headers: HeadersInit,
+  filters?: { category?: string; destination?: string }
 ): Promise<AnalyticsPayload> {
-  const response = await fetch(`/api/analytics?days=${days}`, {
+  const search = new URLSearchParams({ days: String(days) });
+  if (filters?.category) search.set("category", filters.category);
+  if (filters?.destination) search.set("destination", filters.destination);
+
+  const response = await fetch(`/api/analytics?${search.toString()}`, {
     headers,
     cache: "no-store",
   });
@@ -171,4 +173,58 @@ export async function sendTestAlert(headers: HeadersInit) {
     throw new Error(data.error ?? "Failed to send test alert");
   }
   return data;
+}
+
+export async function createStockAdjustment(
+  payload: {
+    itemId: string;
+    direction: "in" | "out";
+    quantity: number;
+    reason: string;
+  },
+  headers: HeadersInit
+) {
+  const response = await fetch("/api/stock/adjust", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error ?? "Failed to adjust stock");
+  }
+  return data as {
+    item: InventoryItem;
+    correction: {
+      timestamp: string;
+      itemId: string;
+      itemName: string;
+      type: "in" | "out";
+      quantity: number;
+      userEmail: string;
+      reason: string;
+    };
+    alertSent: boolean;
+  };
+}
+
+export async function fetchStockAdjustments(limit = 100) {
+  const headers = await getFirebaseAuthHeader();
+  const response = await fetch(
+    `/api/stock/adjustments?limit=${encodeURIComponent(String(limit))}`,
+    { headers, cache: "no-store" }
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error ?? "Failed to load corrections");
+  }
+  return data.corrections as Array<{
+    timestamp: string;
+    itemId: string;
+    itemName: string;
+    type: "in" | "out";
+    quantity: number;
+    userEmail: string;
+    reason: string;
+  }>;
 }

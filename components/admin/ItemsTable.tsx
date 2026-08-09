@@ -51,7 +51,6 @@ export function ItemsTable({ initialItems }: ItemsTableProps) {
           itemName: item.itemName,
           category: item.category,
           unit: item.unit,
-          openingStock: item.openingStock,
           reorderLevel: item.reorderLevel,
           notes: item.notes,
         },
@@ -76,9 +75,6 @@ export function ItemsTable({ initialItems }: ItemsTableProps) {
     setItems((current) =>
       current.map((item) => {
         if (item.itemId !== itemId) return item;
-        if (field === "openingStock") {
-          return { ...item, openingStock: Number(value) || 0 };
-        }
         if (field === "reorderLevel") {
           return {
             ...item,
@@ -162,13 +158,7 @@ export function ItemsTable({ initialItems }: ItemsTableProps) {
                   />
                 </TableCell>
                 <TableCell>
-                  <Input
-                    type="number"
-                    value={item.openingStock}
-                    onChange={(event) =>
-                      updateField(item.itemId, "openingStock", event.target.value)
-                    }
-                  />
+                  {formatNumber(item.openingStock)}
                 </TableCell>
                 <TableCell>
                   {formatNumber(item.closingStock)} {item.unit}
@@ -246,15 +236,17 @@ export function ItemsTable({ initialItems }: ItemsTableProps) {
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor={`${item.itemId}-opening`}>Opening stock</Label>
-                  <Input
-                    id={`${item.itemId}-opening`}
-                    type="number"
-                    value={item.openingStock}
-                    onChange={(event) =>
-                      updateField(item.itemId, "openingStock", event.target.value)
-                    }
-                  />
+                  <Label>Opening stock</Label>
+                  <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {formatNumber(item.openingStock)}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Opening is set on create. Use{" "}
+                    <a href="/admin/corrections" className="text-emerald-700 underline">
+                      Corrections
+                    </a>{" "}
+                    to adjust quantity.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Closing stock</Label>

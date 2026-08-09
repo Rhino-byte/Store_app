@@ -41,9 +41,11 @@ export async function PUT(request: Request) {
   } catch (error) {
     if (error instanceof Response) return error;
     console.error("PUT /api/items", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update item" },
-      { status: 500 }
-    );
+    const message =
+      error instanceof Error ? error.message : "Failed to update item";
+    const status = message.includes("Opening stock cannot be changed")
+      ? 400
+      : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

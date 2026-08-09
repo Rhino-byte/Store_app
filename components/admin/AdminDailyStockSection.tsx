@@ -21,6 +21,9 @@ import { formatNumber } from "@/lib/utils";
 interface AdminDailyStockSectionProps {
   date: string;
   onDateChange: (date: string) => void;
+  /** When set (not "all"), stock-out rows must include this destination. */
+  destination?: string;
+  category?: string;
 }
 
 function EmptyBlock({ message }: { message: string }) {
@@ -123,6 +126,8 @@ function DayStockOutTable({ rows }: { rows: DailyStockItem[] }) {
 export function AdminDailyStockSection({
   date,
   onDateChange,
+  destination = "all",
+  category,
 }: AdminDailyStockSectionProps) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<DailyStockItem[]>([]);
@@ -145,14 +150,28 @@ export function AdminDailyStockSection({
     load();
   }, [date]);
 
-  const stockInRows = useMemo(
-    () => items.filter((item) => item.stockIn > 0),
-    [items]
-  );
-  const stockOutRows = useMemo(
-    () => items.filter((item) => item.stockOut > 0),
-    [items]
-  );
+  const stockInRows = useMemo(() => {
+    return items.filter((item) => item.stockIn > 0);
+  }, [items]);
+
+  const stockOutRows = useMemo(() => {
+    return items.filter((item) => {
+      if (item.stockOut <= 0) return false;
+      if (destination === "all") return true;
+      const parts = item.destination
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
+      return parts.includes(destination);
+    });
+  }, [items, destination]);
+
+  const filterNote = [
+    category ? `Category filter applies on charts above; this table is by date.` : null,
+    destination !== "all" ? `Stock out limited to ${destination}.` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <section className="space-y-4">
@@ -161,6 +180,7 @@ export function AdminDailyStockSection({
           <h2 className="text-lg font-semibold text-slate-900">Daily stock</h2>
           <p className="text-sm text-slate-500">
             Stock in and stock out for a selected day.
+            {filterNote ? ` ${filterNote}` : ""}
           </p>
         </div>
         <div className="w-full space-y-2 sm:w-auto">

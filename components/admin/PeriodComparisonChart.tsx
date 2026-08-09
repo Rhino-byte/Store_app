@@ -17,6 +17,7 @@ import { useIsMobile } from "@/lib/use-media-query";
 interface PeriodComparisonChartProps {
   series: PeriodComparisonSeries | undefined;
   category: string;
+  destination: string;
 }
 
 function ComparisonTooltip({
@@ -54,19 +55,23 @@ function ComparisonTooltip({
 export function PeriodComparisonChart({
   series,
   category,
+  destination,
 }: PeriodComparisonChartProps) {
   const isMobile = useIsMobile();
   const points = series?.points ?? [];
-  const categoryNote =
-    category !== "all" ? ` (${category})` : "";
+  const destNote =
+    destination !== "all" ? `, destination ${destination}` : "";
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Consumption vs previous period{categoryNote}</CardTitle>
+        <CardTitle>
+          Consumption vs previous period ({category}
+          {destination !== "all" ? ` · ${destination}` : ""})
+        </CardTitle>
         <p className="text-sm font-normal text-slate-500">
           Solid bars are this period; outlined bars are the matching days in the
-          previous period of equal length.
+          previous period of equal length{destNote}.
         </p>
       </CardHeader>
       <CardContent className="h-72 sm:h-96">

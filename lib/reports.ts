@@ -6,7 +6,7 @@ import {
   transactionDateKey,
 } from "@/lib/dates";
 import { DEFAULT_STOCK_DESTINATION } from "@/lib/types";
-import type { InventoryItem, Transaction } from "@/lib/types";
+import type { InventoryItem, StockCorrection, Transaction } from "@/lib/types";
 
 export type ReportPeriod = "weekly" | "monthly" | "4months" | "custom";
 
@@ -108,6 +108,12 @@ export type ReportDestinationTotal = {
   quantity: number;
 };
 
+export type ReportCorrectionsSummary = {
+  correctionIn: number;
+  correctionOut: number;
+  count: number;
+};
+
 /** Sheet row order keyed by Item ID (matches Google Sheet top-to-bottom). */
 export function sheetItemOrder(items: InventoryItem[]): Map<string, number> {
   const order = new Map<string, number>();
@@ -198,8 +204,9 @@ export function reportDestinationTotals(
 
 /**
  * Period stock balance:
- * Opening = sheet.openingStock + ins(before from) - outs(before from)
- * Stock In/Out = sums in [from, to]
+ * Opening = sheet.openingStock + (tx + correction) ins before from
+ *           − (tx + correction) outs before from
+ * Stock In/Out = (tx + correction) sums in [from, to]
  * Total = Opening + Stock In
  * Closing = Total - Stock Out
  *
@@ -209,17 +216,36 @@ export function reportStockBalanceRows(
   items: InventoryItem[],
   allTransactions: Transaction[],
   fromKey: string,
-  toKey: string
+  toKey: string,
+  corrections: StockCorrection[] = []
 ): ReportStockBalanceRow[] {
-  const byItem = new Map<string, Transaction[]>();
-  for (const tx of allTransactions) {
-    if (!tx.timestamp || !tx.itemId) continue;
-    const list = byItem.get(tx.itemId) ?? [];
-    list.push(tx);
-    byItem.set(tx.itemId, list);
+  type Movement = { timestamp: string; itemId: string; type: "in" | "out"; quantity: number };
+
+  const byItem = new Map<string, Movement[]>();
+  function pushMovement(entry: Movement) {
+    if (!entry.timestamp || !entry.itemId) return;
+    const list = byItem.get(entry.itemId) ?? [];
+    list.push(entry);
+    byItem.set(entry.itemId, list);
   }
 
-  // `items` from getInventoryItems() is already in sheet row order.
+  for (const tx of allTransactions) {
+    pushMovement({
+      timestamp: tx.timestamp,
+      itemId: tx.itemId,
+      type: tx.type,
+      quantity: tx.quantity,
+    });
+  }
+  for (const corr of corrections) {
+    pushMovement({
+      timestamp: corr.timestamp,
+      itemId: corr.itemId,
+      type: corr.type,
+      quantity: corr.quantity,
+    });
+  }
+
   return items.map((item) => {
     const txs = byItem.get(item.itemId) ?? [];
     let priorIn = 0;
@@ -254,4 +280,25 @@ export function reportStockBalanceRows(
       closing,
     };
   });
+}
+
+/** Sum of Corrections sheet rows in [from, to] (not mixed into destination pie). */
+export function reportCorrectionsSummary(
+  corrections: StockCorrection[],
+  fromKey: string,
+  toKey: string
+): ReportCorrectionsSummary {
+  let correctionIn = 0;
+  let correctionOut = 0;
+  let count = 0;
+
+  for (const corr of corrections) {
+    const day = transactionDateKey(corr.timestamp);
+    if (!isDateKeyInRange(day, fromKey, toKey)) continue;
+    count += 1;
+    if (corr.type === "in") correctionIn += corr.quantity;
+    else correctionOut += corr.quantity;
+  }
+
+  return { correctionIn, correctionOut, count };
 }

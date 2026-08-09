@@ -11,64 +11,42 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { DailyItemSeries } from "@/lib/analytics";
 import { useIsMobile } from "@/lib/use-media-query";
 
 const ITEM_COLORS = ["#2563eb", "#16a34a", "#ea580c", "#ca8a04", "#7c3aed"];
 
 interface TopUsedDailyChartProps {
-  categories: string[];
   category: string;
-  onCategoryChange: (category: string) => void;
+  destination: string;
   series: DailyItemSeries | undefined;
 }
 
 export function TopUsedDailyChart({
-  categories,
   category,
-  onCategoryChange,
+  destination,
   series,
 }: TopUsedDailyChartProps) {
   const isMobile = useIsMobile();
   const items = series?.items ?? [];
   const points = series?.points ?? [];
   const xKey = points.some((p) => "label" in p) ? "label" : "date";
+  const destNote =
+    destination !== "all" ? ` to ${destination}` : "";
 
   return (
     <Card>
-      <CardHeader className="space-y-3 sm:flex sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
-        <div>
-          <CardTitle>Top 5 most used items</CardTitle>
-          <p className="mt-1 text-sm font-normal text-slate-500">
-            Daily usage for the five highest-consumption items
-            {category !== "all" ? ` in ${category}` : ""}.
-          </p>
-        </div>
-        <Select value={category} onValueChange={onCategoryChange}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="Category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All categories</SelectItem>
-            {categories.map((cat) => (
-              <SelectItem key={cat} value={cat}>
-                {cat}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <CardHeader>
+        <CardTitle>Top 5 most used items</CardTitle>
+        <p className="mt-1 text-sm font-normal text-slate-500">
+          Daily stock-out for the five highest-consumption items in {category}
+          {destNote}.
+        </p>
       </CardHeader>
       <CardContent className="h-64 sm:h-80">
         {!items.length || !points.length ? (
           <p className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-            No consumption in this category for the selected range.
+            No consumption in this category for the selected filters.
           </p>
         ) : (
           <ResponsiveContainer width="100%" height="100%">

@@ -10,6 +10,7 @@ import type {
   InventoryItem,
   ItemCreateRequest,
   ItemUpdateRequest,
+  StockCorrection,
   Transaction,
 } from "./types";
 import { DEFAULT_STOCK_DESTINATION } from "./types";
@@ -17,6 +18,7 @@ import { DEFAULT_STOCK_DESTINATION } from "./types";
 const INVENTORY_SHEET = "Sheet1";
 const TRANSACTIONS_SHEET = "Transactions";
 const ALERT_LOG_SHEET = "AlertLog";
+const CORRECTIONS_SHEET = "Corrections";
 
 function getSpreadsheetId(): string {
   const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
@@ -95,6 +97,12 @@ export async function ensureAuxiliarySheets(): Promise<void> {
     });
   }
 
+  if (!existing.has(CORRECTIONS_SHEET)) {
+    requests.push({
+      addSheet: { properties: { title: CORRECTIONS_SHEET } },
+    });
+  }
+
   if (requests.length) {
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
@@ -133,6 +141,27 @@ export async function ensureAuxiliarySheets(): Promise<void> {
       valueInputOption: "RAW",
       requestBody: {
         values: [["Item ID", "Last Alerted At", "Stock At Alert"]],
+      },
+    });
+  }
+
+  if (!existing.has(CORRECTIONS_SHEET)) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${CORRECTIONS_SHEET}!A1:G1`,
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [
+          [
+            "Timestamp",
+            "Item ID",
+            "Item Name",
+            "Type",
+            "Quantity",
+            "User Email",
+            "Reason",
+          ],
+        ],
       },
     });
   }
@@ -329,6 +358,63 @@ export async function getTransactions(): Promise<Transaction[]> {
   });
 }
 
+export async function appendCorrection(
+  correction: StockCorrection
+): Promise<void> {
+  await ensureAuxiliarySheets();
+  const sheets = getSheetsClient();
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: getSpreadsheetId(),
+    range: `${CORRECTIONS_SHEET}!A:G`,
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: {
+      values: [
+        [
+          correction.timestamp,
+          correction.itemId,
+          correction.itemName,
+          correction.type,
+          correction.quantity,
+          correction.userEmail,
+          correction.reason,
+        ],
+      ],
+    },
+  });
+}
+
+export async function getCorrections(): Promise<StockCorrection[]> {
+  await ensureAuxiliarySheets();
+  const sheets = getSheetsClient();
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: getSpreadsheetId(),
+    range: `${CORRECTIONS_SHEET}!A2:G`,
+  });
+
+  const rows = response.data.values ?? [];
+  return rows
+    .map((row) => {
+      const itemId = String(row[1] ?? "").trim();
+      if (!itemId) return null;
+      const rawType = String(row[3] ?? "")
+        .trim()
+        .toLowerCase();
+      const type = (rawType === "out" ? "out" : "in") as StockCorrection["type"];
+      return {
+        timestamp: row[0] ?? "",
+        itemId,
+        itemName: row[2] ?? "",
+        type,
+        quantity: parseSheetNumber(row[4]),
+        userEmail: row[5] ?? "",
+        reason: row[6] ?? "",
+      } satisfies StockCorrection;
+    })
+    .filter((row): row is StockCorrection => row !== null);
+}
+
 export async function createInventoryItem(
   input: ItemCreateRequest
 ): Promise<InventoryItem> {
@@ -398,12 +484,21 @@ export async function updateItemMetadata(
     throw new Error("Item not found.");
   }
 
+  if (
+    update.openingStock !== undefined &&
+    Number(update.openingStock) !== item.openingStock
+  ) {
+    throw new Error(
+      "Opening stock cannot be changed after create. Use Corrections to adjust quantity."
+    );
+  }
+
   const nextItem: InventoryItem = {
     ...item,
     itemName: update.itemName ?? item.itemName,
     category: update.category ?? item.category,
     unit: update.unit ?? item.unit,
-    openingStock: update.openingStock ?? item.openingStock,
+    openingStock: item.openingStock,
     reorderLevel:
       update.reorderLevel !== undefined ? update.reorderLevel : item.reorderLevel,
     notes: update.notes ?? item.notes,

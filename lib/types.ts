@@ -47,6 +47,24 @@ export interface Transaction {
   destination: string;
 }
 
+/** Admin stock correction logged on the Corrections sheet (not Transactions). */
+export interface StockCorrection {
+  timestamp: string;
+  itemId: string;
+  itemName: string;
+  type: StockMovementType;
+  quantity: number;
+  userEmail: string;
+  reason: string;
+}
+
+export interface StockAdjustRequest {
+  itemId: string;
+  direction: StockMovementType;
+  quantity: number;
+  reason: string;
+}
+
 export interface AlertLogEntry {
   itemId: string;
   lastAlertedAt: string;

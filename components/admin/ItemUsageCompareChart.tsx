@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { ItemMultiSelect } from "@/components/admin/ItemMultiSelect";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { InventoryOption, WeeklyItemOutMatrix } from "@/lib/analytics";
+import type { InventoryOption, ItemOutMatrix } from "@/lib/analytics";
 import { useIsMobile } from "@/lib/use-media-query";
 
 const ITEM_COLORS = ["#2563eb", "#16a34a", "#ea580c", "#ca8a04", "#7c3aed"];
@@ -22,7 +22,9 @@ interface ItemUsageCompareChartProps {
   options: InventoryOption[];
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
-  weekly: WeeklyItemOutMatrix | undefined;
+  matrix: ItemOutMatrix | undefined;
+  category: string;
+  destination: string;
   pageDays: number;
 }
 
@@ -30,7 +32,9 @@ export function ItemUsageCompareChart({
   options,
   selectedIds,
   onSelectedIdsChange,
-  weekly,
+  matrix,
+  category,
+  destination,
   pageDays,
 }: ItemUsageCompareChartProps) {
   const isMobile = useIsMobile();
@@ -42,25 +46,23 @@ export function ItemUsageCompareChart({
   }, [options]);
 
   const chartData = useMemo(() => {
-    if (!weekly || selectedIds.length === 0) return [];
-    return weekly.dates.map((date, index) => {
+    if (!matrix || selectedIds.length === 0) return [];
+    return matrix.dates.map((date, index) => {
       const row: Record<string, string | number> = {
         date,
-        label: weekly.labels[index] ?? date,
+        label: matrix.labels[index] ?? date,
       };
       for (const itemId of selectedIds) {
-        row[itemId] = weekly.byItemId[itemId]?.[index] ?? 0;
+        row[itemId] = matrix.byItemId[itemId]?.[index] ?? 0;
       }
       return row;
     });
-  }, [weekly, selectedIds]);
+  }, [matrix, selectedIds]);
 
-  const rangeNote =
-    pageDays === 0
-      ? "Showing today only (matches the page range)."
-      : pageDays === 7
-        ? "Showing the last 7 days (matches the page range)."
-        : "Showing the last 7 days for a readable weekly comparison.";
+  const spanDays =
+    pageDays === 0 ? 1 : pageDays === 7 ? 7 : Math.min(pageDays, 30);
+  const destNote =
+    destination !== "all" ? ` Destination: ${destination}.` : "";
 
   return (
     <Card>
@@ -68,7 +70,8 @@ export function ItemUsageCompareChart({
         <div>
           <CardTitle>Compare item usage</CardTitle>
           <p className="mt-1 text-sm font-normal text-slate-500">
-            Select up to 5 items to compare daily stock-out. {rangeNote}
+            Daily stock-out in {category} over the last {spanDays} day
+            {spanDays === 1 ? "" : "s"}.{destNote}
           </p>
         </div>
         <ItemMultiSelect
@@ -81,7 +84,7 @@ export function ItemUsageCompareChart({
       <CardContent className="h-72 sm:h-96">
         {selectedIds.length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-            Select 2–5 items to compare their usage across the week.
+            Select items to compare their usage.
           </p>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
