@@ -23,7 +23,6 @@ interface ItemUsageCompareChartProps {
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
   matrix: ItemOutMatrix | undefined;
-  category: string;
   destination: string;
   pageDays: number;
 }
@@ -33,7 +32,6 @@ export function ItemUsageCompareChart({
   selectedIds,
   onSelectedIdsChange,
   matrix,
-  category,
   destination,
   pageDays,
 }: ItemUsageCompareChartProps) {
@@ -70,7 +68,8 @@ export function ItemUsageCompareChart({
         <div>
           <CardTitle>Compare item usage</CardTitle>
           <p className="mt-1 text-sm font-normal text-slate-500">
-            Daily stock-out in {category} over the last {spanDays} day
+            Defaults to top movers in the selected category; you can also pick
+            items from any category. Showing the last {spanDays} day
             {spanDays === 1 ? "" : "s"}.{destNote}
           </p>
         </div>

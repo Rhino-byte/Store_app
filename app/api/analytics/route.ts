@@ -52,7 +52,7 @@ export async function GET(request: Request) {
       destinations: ["all", ...STOCK_DESTINATIONS],
       category,
       destination,
-      inventoryOptions: inventoryOptions(items, category),
+      inventoryOptions: inventoryOptions(items),
       dailyMovement: dailyInOutMovement(transactions, items, days, {
         category,
         destination,

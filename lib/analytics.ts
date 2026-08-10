@@ -670,12 +670,16 @@ export function itemDailyOutSeries(
 /**
  * Item out matrix for compare chart.
  * Span: today→1, 7→7, else min(pageDays, 30) for readability.
+ * Series data covers all items (any category); topItemIds are category-scoped defaults.
  */
 export function itemOutMatrix(
   transactions: Transaction[],
   items: InventoryItem[],
   daysForPage: number,
-  options?: { category?: string; destination?: string | null }
+  options?: {
+    category?: string;
+    destination?: string | null;
+  }
 ): ItemOutMatrix {
   const span =
     daysForPage === 0 ? 1 : daysForPage === 7 ? 7 : Math.min(daysForPage, 30);
@@ -684,17 +688,14 @@ export function itemOutMatrix(
   const labels = dates.map((d) => periodAxisLabel(d, span));
   const categoryByItemId = itemCategoryMap(items);
 
+  // Full series so the picker can compare across categories.
   const outs = filterOutTransactions(transactions, {
     from,
     to,
-    category: options?.category,
-    categoryByItemId,
     destination: options?.destination,
   });
 
   const byItemId: Record<string, number[]> = {};
-  const totals = new Map<string, number>();
-
   for (const tx of outs) {
     const day = transactionDateKey(tx.timestamp);
     const dayIndex = dates.indexOf(day);
@@ -703,10 +704,25 @@ export function itemOutMatrix(
       byItemId[tx.itemId] = dates.map(() => 0);
     }
     byItemId[tx.itemId][dayIndex] += tx.quantity;
-    totals.set(tx.itemId, (totals.get(tx.itemId) ?? 0) + tx.quantity);
   }
 
-  const topItemIds = Array.from(totals.entries())
+  // Default selection: top movers within the selected category only.
+  const categoryOuts = filterOutTransactions(transactions, {
+    from,
+    to,
+    category: options?.category,
+    categoryByItemId,
+    destination: options?.destination,
+  });
+  const categoryTotals = new Map<string, number>();
+  for (const tx of categoryOuts) {
+    categoryTotals.set(
+      tx.itemId,
+      (categoryTotals.get(tx.itemId) ?? 0) + tx.quantity
+    );
+  }
+
+  const topItemIds = Array.from(categoryTotals.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
     .map(([itemId]) => itemId);

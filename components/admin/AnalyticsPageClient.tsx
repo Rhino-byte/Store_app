@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AdminDailyStockSection } from "@/components/admin/AdminDailyStockSection";
 import { DestinationBreakdownChart } from "@/components/admin/DestinationBreakdownChart";
@@ -40,6 +40,7 @@ export function AnalyticsPageClient() {
   const [compareItemIds, setCompareItemIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AnalyticsPayload | null>(null);
+  const lastCompareCategoryRef = useRef<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -63,10 +64,19 @@ export function AnalyticsPageClient() {
         const validIds = new Set(
           analytics.inventoryOptions.map((option) => option.itemId)
         );
+        const categoryDefaults = analytics.itemOuts.topItemIds.filter((id) =>
+          validIds.has(id)
+        );
+        const categoryChanged =
+          lastCompareCategoryRef.current !== analytics.category;
+        lastCompareCategoryRef.current = analytics.category;
+
         setCompareItemIds((prev) => {
+          if (categoryChanged || prev.length === 0) {
+            return categoryDefaults;
+          }
           const kept = prev.filter((id) => validIds.has(id));
-          if (kept.length > 0) return kept;
-          return analytics.itemOuts.topItemIds.filter((id) => validIds.has(id));
+          return kept.length > 0 ? kept : categoryDefaults;
         });
       } catch (error) {
         if (!cancelled) {
@@ -179,7 +189,6 @@ export function AnalyticsPageClient() {
             selectedIds={compareItemIds}
             onSelectedIdsChange={setCompareItemIds}
             matrix={data.itemOuts}
-            category={data.category}
             destination={data.destination}
             pageDays={days}
           />
