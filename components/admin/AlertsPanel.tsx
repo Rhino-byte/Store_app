@@ -1,19 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { fetchAnalytics, sendTestAlert } from "@/lib/api-client";
+import {
+  fetchAnalytics,
+  fetchKitchenReportSchedule,
+  sendKitchenReportEmail,
+  sendTestAlert,
+} from "@/lib/api-client";
 import { getFirebaseAuthHeader } from "@/lib/auth/use-firebase-auth";
+import { formatKitchenReportHourLabel } from "@/lib/kitchen-report";
 
 export function AlertsPanel() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [kitchenSending, setKitchenSending] = useState(false);
+  const [hourEat, setHourEat] = useState(8);
+  const [cronEnabled, setCronEnabled] = useState(false);
   const [history, setHistory] = useState<
     Array<{ itemId: string; itemName: string; closingStock: number; reorderLevel: number | null }>
   >([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSchedule() {
+      try {
+        const data = await fetchKitchenReportSchedule();
+        if (cancelled) return;
+        setHourEat(data.hourEat);
+        setCronEnabled(data.cronEnabled);
+      } catch {
+        // Keep the 08:00 EAT default label if schedule cannot be loaded.
+      }
+    }
+
+    void loadSchedule();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function loadHistory() {
     try {
@@ -50,6 +79,20 @@ export function AlertsPanel() {
     }
   }
 
+  async function handleKitchenReport() {
+    setKitchenSending(true);
+    try {
+      const data = await sendKitchenReportEmail();
+      toast.success(`Kitchen report sent for ${data.date}.`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to send kitchen report"
+      );
+    } finally {
+      setKitchenSending(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -57,11 +100,20 @@ export function AlertsPanel() {
           <CardTitle>Email alerts</CardTitle>
           <CardDescription>
             Low-stock alerts are sent automatically after stock movements and once a day.
+            Kitchen PDF is scheduled {formatKitchenReportHourLabel(hourEat)}
+            {cronEnabled ? " and is enabled." : " (cron off until you enable it)."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <Button onClick={handleTestEmail} disabled={loading}>
             {loading ? "Sending..." : "Send test email"}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleKitchenReport}
+            disabled={kitchenSending}
+          >
+            {kitchenSending ? "Sending..." : "Send kitchen report now"}
           </Button>
           <Button variant="outline" onClick={loadHistory}>
             Refresh low-stock list

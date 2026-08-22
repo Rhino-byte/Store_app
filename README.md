@@ -7,6 +7,7 @@ A Next.js inventory app for Merry Mary Hotel that uses Google Sheets as the sour
 - **Staff workspace:** record stock in and stock out against the shared Google Sheet
 - **Admin dashboard:** KPIs, low-stock table, item management, analytics charts
 - **Email alerts:** SMTP notifications when stock falls to the reorder level
+- **Kitchen daily PDF:** yesterday’s priority kitchen items emailed at 08:00 EAT after you enable cron
 - **Audit log:** every movement is appended to a `Transactions` sheet tab
 
 ## Tech stack
@@ -57,7 +58,10 @@ Important groups:
 - `ADMIN_ACCESS_PASSWORD`, `STAFF_ACCESS_PASSWORD`, and `PORTAL_SECRET` for the second-step password gate
 - `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
 - `SMTP_*` and `ADMIN_ALERT_EMAIL`
-- `CRON_SECRET` for the scheduled low-stock job
+- `KITCHEN_REPORT_HOUR_EAT` (display label only; default 8)
+- `KITCHEN_REPORT_CRON_ENABLED` (`false` until you test, then `true`)
+- `KITCHEN_REPORT_EMAIL` (optional test inbox; otherwise `ADMIN_ALERT_EMAIL`)
+- `CRON_SECRET` for the scheduled daily job
 - `NEXT_PUBLIC_APP_URL` for links inside alert emails
 
 ### Setting up Firebase UIDs
@@ -99,7 +103,7 @@ Open `http://localhost:3000`.
 | `/admin/analytics` | Admin | Charts + daily stock by date |
 | `/admin/reports` | Admin | Period reports (weekly/monthly/4 months/custom) |
 | `/admin/items` | Admin | Edit items and reorder levels |
-| `/admin/alerts` | Admin | Test email + low-stock review |
+| `/admin/alerts` | Admin | Test email, send kitchen PDF, low-stock review |
 | `/clerk/login` | Staff | Google sign-in + staff password |
 | `/clerk/stock-out` | Staff | Record usage |
 | `/clerk/stock-in` | Staff | Record incoming stock |
@@ -112,7 +116,11 @@ Open `http://localhost:3000`.
 3. Add all environment variables from `.env.example`
 4. Deploy
 
-`vercel.json` includes a cron job that calls `/api/cron/check-stock` every 6 hours.
+`vercel.json` includes a daily cron at **08:00 EAT** (`0 5 * * *`, 05:00 UTC) that calls `/api/cron/check-stock`. That job always runs the low-stock check. It sends yesterday’s kitchen PDF only when `KITCHEN_REPORT_CRON_ENABLED=true`.
+
+`KITCHEN_REPORT_HOUR_EAT` is a label on `/admin/alerts` (for example `08:00 EAT`). Changing it does not move the Vercel clock; change the cron expression in `vercel.json` to change send time.
+
+Test first: set `KITCHEN_REPORT_EMAIL` to your inbox if you want, open `/admin/alerts`, click **Send kitchen report now**, confirm the PDF on your phone, then set `KITCHEN_REPORT_CRON_ENABLED=true` in Vercel.
 
 Set `CRON_SECRET` in Vercel and ensure the cron route receives:
 

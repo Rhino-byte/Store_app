@@ -1,4 +1,11 @@
 import nodemailer from "nodemailer";
+import type { KitchenDailyRow } from "@/lib/kitchen-report";
+import {
+  buildKitchenReportEmailHtml,
+  buildKitchenReportEmailText,
+  buildKitchenReportPdf,
+  kitchenReportPdfFilename,
+} from "@/lib/kitchen-pdf";
 import { getAlertLogs, upsertAlertLog } from "./sheets";
 import { isLowStock } from "./stock";
 import type { InventoryItem } from "./types";
@@ -26,27 +33,93 @@ function getTransporter() {
   });
 }
 
-function getAlertRecipients(): string[] {
-  const raw = process.env.ADMIN_ALERT_EMAIL ?? "";
+function parseEmailList(raw: string): string[] {
   return raw
     .split(",")
     .map((email) => email.trim())
     .filter(Boolean);
 }
 
-export async function sendTestEmail(): Promise<void> {
+function getAlertRecipients(): string[] {
+  return parseEmailList(process.env.ADMIN_ALERT_EMAIL ?? "");
+}
+
+export function getKitchenReportRecipients(): string[] {
+  const override = parseEmailList(process.env.KITCHEN_REPORT_EMAIL ?? "");
+  if (override.length) return override;
+  return getAlertRecipients();
+}
+
+export function isKitchenReportCronEnabled(): boolean {
+  return process.env.KITCHEN_REPORT_CRON_ENABLED?.trim().toLowerCase() === "true";
+}
+
+export function getKitchenReportHourEat(): number {
+  const raw = process.env.KITCHEN_REPORT_HOUR_EAT?.trim();
+  if (!raw) return 8;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 23) return 8;
+  return parsed;
+}
+
+async function sendMail(options: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+    contentType: string;
+  }>;
+}): Promise<void> {
   const transporter = getTransporter();
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+    ...options,
+  });
+}
+
+export async function sendTestEmail(): Promise<void> {
   const recipients = getAlertRecipients();
   if (!recipients.length) {
     throw new Error("ADMIN_ALERT_EMAIL is not configured.");
   }
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+  await sendMail({
     to: recipients.join(", "),
     subject: "Merry Mary Hotel — Test Alert",
     text: "This is a test email from the Merry Mary Hotel Stock App.",
     html: "<p>This is a <strong>test email</strong> from the Merry Mary Hotel Stock App.</p>",
+  });
+}
+
+export async function sendKitchenDailyReportEmail(
+  dateKey: string,
+  rows: KitchenDailyRow[]
+): Promise<void> {
+  const recipients = getKitchenReportRecipients();
+  if (!recipients.length) {
+    throw new Error(
+      "KITCHEN_REPORT_EMAIL or ADMIN_ALERT_EMAIL is not configured."
+    );
+  }
+
+  const pdf = await buildKitchenReportPdf(dateKey, rows);
+  const filename = kitchenReportPdfFilename(dateKey);
+
+  await sendMail({
+    to: recipients.join(", "),
+    subject: `Kitchen daily report — ${dateKey}`,
+    text: buildKitchenReportEmailText(dateKey, rows),
+    html: buildKitchenReportEmailHtml(dateKey, rows),
+    attachments: [
+      {
+        filename,
+        content: pdf,
+        contentType: "application/pdf",
+      },
+    ],
   });
 }
 
@@ -66,7 +139,6 @@ export async function sendLowStockAlert(item: InventoryItem): Promise<boolean> {
     return false;
   }
 
-  const transporter = getTransporter();
   const recipients = getAlertRecipients();
   if (!recipients.length) {
     throw new Error("ADMIN_ALERT_EMAIL is not configured.");
@@ -82,8 +154,7 @@ export async function sendLowStockAlert(item: InventoryItem): Promise<boolean> {
     `Dashboard: ${appUrl}/admin/dashboard`,
   ].join("\n");
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+  await sendMail({
     to: recipients.join(", "),
     subject,
     text,

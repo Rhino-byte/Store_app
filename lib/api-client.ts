@@ -80,6 +80,32 @@ export async function fetchDailyStock(date?: string): Promise<{
   return data;
 }
 
+export async function fetchKitchenReport(date: string): Promise<{
+  date: string;
+  rows: Array<{
+    key: string;
+    label: string;
+    unit: string;
+    itemId: string | null;
+    itemName: string | null;
+    stockIn: number;
+    stockOut: number;
+    destination: string;
+    matched: boolean;
+  }>;
+}> {
+  const headers = await getFirebaseAuthHeader();
+  const response = await fetch(
+    `/api/reports/kitchen?date=${encodeURIComponent(date)}`,
+    { headers, cache: "no-store" }
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error ?? "Failed to load kitchen report");
+  }
+  return data;
+}
+
 export async function fetchReport(params: {
   period: "weekly" | "monthly" | "4months" | "custom";
   from?: string;
@@ -173,6 +199,37 @@ export async function sendTestAlert(headers: HeadersInit) {
     throw new Error(data.error ?? "Failed to send test alert");
   }
   return data;
+}
+
+export async function fetchKitchenReportSchedule(): Promise<{
+  hourEat: number;
+  cronEnabled: boolean;
+  defaultDate: string;
+}> {
+  const headers = await getFirebaseAuthHeader();
+  const response = await fetch("/api/alerts/kitchen-report", {
+    headers,
+    cache: "no-store",
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error ?? "Failed to load kitchen report schedule");
+  }
+  return data;
+}
+
+export async function sendKitchenReportEmail(date?: string) {
+  const headers = await getFirebaseAuthHeader();
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
+  const response = await fetch(`/api/alerts/kitchen-report${query}`, {
+    method: "POST",
+    headers,
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error ?? "Failed to send kitchen report");
+  }
+  return data as { success: boolean; date: string };
 }
 
 export async function createStockAdjustment(

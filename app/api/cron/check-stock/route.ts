@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
-import { checkAllItemsForAlerts } from "@/lib/alerts";
-import { getInventoryItems } from "@/lib/sheets";
+import {
+  checkAllItemsForAlerts,
+  isKitchenReportCronEnabled,
+  sendKitchenDailyReportEmail,
+} from "@/lib/alerts";
+import { yesterdayDateKey } from "@/lib/dates";
+import { buildKitchenDailyReport } from "@/lib/kitchen-report";
+import { getInventoryItems, getTransactions } from "@/lib/sheets";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -11,9 +17,35 @@ export async function GET(request: Request) {
   }
 
   try {
+    const kitchenDate = yesterdayDateKey();
     const items = await getInventoryItems();
+
+    let kitchenSent = false;
+    let kitchenSkipped: string | null = null;
+
+    if (!isKitchenReportCronEnabled()) {
+      kitchenSkipped = "disabled";
+    } else {
+      try {
+        const transactions = await getTransactions();
+        const rows = buildKitchenDailyReport(items, transactions, kitchenDate);
+        await sendKitchenDailyReportEmail(kitchenDate, rows);
+        kitchenSent = true;
+      } catch (error) {
+        console.error("Kitchen daily report email failed", error);
+        kitchenSkipped =
+          error instanceof Error ? error.message : "send_failed";
+      }
+    }
+
     const alertsSent = await checkAllItemsForAlerts(items);
-    return NextResponse.json({ alertsSent, checked: items.length });
+    return NextResponse.json({
+      kitchenDate,
+      kitchenSent,
+      kitchenSkipped,
+      alertsSent,
+      checked: items.length,
+    });
   } catch (error) {
     console.error("GET /api/cron/check-stock", error);
     return NextResponse.json(

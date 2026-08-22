@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { KitchenDailyReport } from "@/components/admin/KitchenDailyReport";
 import { fetchReport } from "@/lib/api-client";
 import type {
   ReportCorrectionsSummary,
@@ -282,7 +283,7 @@ export function ReportsPageClient() {
         <div>
           <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Reports</h1>
           <p className="text-sm text-slate-500">
-            Generate stock movement summaries by period.
+            Kitchen daily list first, then full inventory summaries by period.
           </p>
         </div>
         <Button
@@ -294,6 +295,17 @@ export function ReportsPageClient() {
         >
           Print
         </Button>
+      </div>
+
+      <KitchenDailyReport />
+
+      <div className="border-t border-slate-200 pt-6">
+        <h2 className="text-lg font-semibold text-slate-900">
+          Full inventory
+        </h2>
+        <p className="mb-4 text-sm text-slate-500">
+          All sheet items for the selected period, including store supplies.
+        </p>
       </div>
 
       <div className="report-controls flex flex-wrap gap-2">

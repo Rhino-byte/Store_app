@@ -38,6 +38,11 @@ export function todayDateKey(now = new Date()): string {
   return formatDateKeyInAppTz(now);
 }
 
+/** Previous calendar day in Africa/Nairobi as YYYY-MM-DD. */
+export function yesterdayDateKey(now = new Date()): string {
+  return addCalendarDays(todayDateKey(now), -1);
+}
+
 /**
  * Map a transaction timestamp to the app-timezone calendar day.
  * ISO strings with Z are converted via Africa/Nairobi (not UTC slice).
