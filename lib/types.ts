@@ -10,6 +10,7 @@ export interface InventoryItem {
   closingStock: number;
   reorderLevel: number | null;
   notes: string;
+  price: number | null;
 }
 
 export type StockMovementType = "in" | "out";
@@ -86,6 +87,7 @@ export interface ItemUpdateRequest {
   openingStock?: number;
   reorderLevel?: number | null;
   notes?: string;
+  price?: number | null;
 }
 
 export interface ItemCreateRequest {
@@ -97,4 +99,5 @@ export interface ItemCreateRequest {
   stockOut?: number;
   reorderLevel?: number | null;
   notes?: string;
+  price?: number | null;
 }

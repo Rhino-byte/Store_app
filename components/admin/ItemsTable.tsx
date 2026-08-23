@@ -53,6 +53,7 @@ export function ItemsTable({ initialItems }: ItemsTableProps) {
           unit: item.unit,
           reorderLevel: item.reorderLevel,
           notes: item.notes,
+          price: item.price,
         },
         headers
       );
@@ -75,10 +76,10 @@ export function ItemsTable({ initialItems }: ItemsTableProps) {
     setItems((current) =>
       current.map((item) => {
         if (item.itemId !== itemId) return item;
-        if (field === "reorderLevel") {
+        if (field === "reorderLevel" || field === "price") {
           return {
             ...item,
-            reorderLevel: value === "" ? null : Number(value),
+            [field]: value === "" ? null : Number(value),
           };
         }
         return { ...item, [field]: value };
@@ -126,6 +127,7 @@ export function ItemsTable({ initialItems }: ItemsTableProps) {
               <TableHead>Opening</TableHead>
               <TableHead>Closing</TableHead>
               <TableHead>Reorder</TableHead>
+              <TableHead>Price</TableHead>
               <TableHead>Notes</TableHead>
               <TableHead />
             </TableRow>
@@ -166,9 +168,22 @@ export function ItemsTable({ initialItems }: ItemsTableProps) {
                 <TableCell>
                   <Input
                     type="number"
+                    min={0}
+                    step="any"
                     value={item.reorderLevel ?? ""}
                     onChange={(event) =>
                       updateField(item.itemId, "reorderLevel", event.target.value)
+                    }
+                  />
+                </TableCell>
+                <TableCell>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={item.price ?? ""}
+                    onChange={(event) =>
+                      updateField(item.itemId, "price", event.target.value)
                     }
                   />
                 </TableCell>
@@ -255,16 +270,33 @@ export function ItemsTable({ initialItems }: ItemsTableProps) {
                   </p>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor={`${item.itemId}-reorder`}>Reorder level</Label>
-                <Input
-                  id={`${item.itemId}-reorder`}
-                  type="number"
-                  value={item.reorderLevel ?? ""}
-                  onChange={(event) =>
-                    updateField(item.itemId, "reorderLevel", event.target.value)
-                  }
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor={`${item.itemId}-reorder`}>Reorder level</Label>
+                  <Input
+                    id={`${item.itemId}-reorder`}
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={item.reorderLevel ?? ""}
+                    onChange={(event) =>
+                      updateField(item.itemId, "reorderLevel", event.target.value)
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`${item.itemId}-price`}>Price</Label>
+                  <Input
+                    id={`${item.itemId}-price`}
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={item.price ?? ""}
+                    onChange={(event) =>
+                      updateField(item.itemId, "price", event.target.value)
+                    }
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor={`${item.itemId}-notes`}>Notes</Label>

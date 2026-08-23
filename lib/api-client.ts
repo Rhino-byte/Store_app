@@ -159,6 +159,7 @@ export async function createItem(
     stockOut?: number;
     reorderLevel?: number | null;
     notes?: string;
+    price?: number | null;
   },
   headers: HeadersInit
 ) {

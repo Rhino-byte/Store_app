@@ -26,6 +26,7 @@ const emptyForm = {
   stockOut: "0",
   reorderLevel: "",
   notes: "",
+  price: "",
 };
 
 export function AddItemDialog({ onCreated }: AddItemDialogProps) {
@@ -103,6 +104,7 @@ export function AddItemDialog({ onCreated }: AddItemDialogProps) {
               ? null
               : Number(form.reorderLevel),
           notes: form.notes.trim(),
+          price: form.price.trim() === "" ? null : Number(form.price),
         },
         headers
       );
@@ -243,19 +245,33 @@ export function AddItemDialog({ onCreated }: AddItemDialogProps) {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="new-item-reorder">Reorder Level</Label>
-              <Input
-                id="new-item-reorder"
-                type="number"
-                min={0}
-                step="any"
-                value={form.reorderLevel}
-                onChange={(event) =>
-                  updateField("reorderLevel", event.target.value)
-                }
-                placeholder="Optional"
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="new-item-reorder">Reorder Level</Label>
+                <Input
+                  id="new-item-reorder"
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={form.reorderLevel}
+                  onChange={(event) =>
+                    updateField("reorderLevel", event.target.value)
+                  }
+                  placeholder="Optional"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-item-price">Price</Label>
+                <Input
+                  id="new-item-price"
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={form.price}
+                  onChange={(event) => updateField("price", event.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">

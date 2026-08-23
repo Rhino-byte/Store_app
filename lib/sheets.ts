@@ -72,7 +72,16 @@ function rowToItem(row: string[], rowIndex: number): InventoryItem | null {
     closingStock,
     reorderLevel: parseOptionalNumber(row[8]),
     notes: row[9]?.trim() ?? "",
+    price: parseOptionalNumber(row[10]),
   };
+}
+
+function parsePrice(value: number | null | undefined): number | null {
+  if (value === undefined || value === null) return null;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("Price must be a non-negative number.");
+  }
+  return value;
 }
 
 export async function ensureAuxiliarySheets(): Promise<void> {
@@ -243,11 +252,40 @@ async function ensureTransactionsDestinationColumn(
   }
 }
 
+/** Ensure column K header is "Price" so existing sheets pick up the new field. */
+async function ensureInventoryPriceColumn(
+  sheets: ReturnType<typeof getSheetsClient>,
+  spreadsheetId: string
+): Promise<void> {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${INVENTORY_SHEET}!A1:K1`,
+  });
+
+  const header = [...(response.data.values?.[0] ?? [])];
+  while (header.length < 11) {
+    header.push("");
+  }
+  if (header[10]?.trim() === "Price") {
+    return;
+  }
+
+  header[10] = "Price";
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${INVENTORY_SHEET}!A1:K1`,
+    valueInputOption: "RAW",
+    requestBody: { values: [header] },
+  });
+}
+
 export async function getInventoryItems(): Promise<InventoryItem[]> {
   const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  await ensureInventoryPriceColumn(sheets, spreadsheetId);
   const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: getSpreadsheetId(),
-    range: `${INVENTORY_SHEET}!A2:J`,
+    spreadsheetId,
+    range: `${INVENTORY_SHEET}!A2:K`,
   });
 
   const rows = response.data.values ?? [];
@@ -445,10 +483,14 @@ export async function createInventoryItem(
     throw new Error("Reorder Level must be a non-negative number.");
   }
 
+  const price = parsePrice(input.price);
+
   const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  await ensureInventoryPriceColumn(sheets, spreadsheetId);
   await sheets.spreadsheets.values.append({
-    spreadsheetId: getSpreadsheetId(),
-    range: `${INVENTORY_SHEET}!A:J`,
+    spreadsheetId,
+    range: `${INVENTORY_SHEET}!A:K`,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
@@ -464,6 +506,7 @@ export async function createInventoryItem(
           closingStock,
           reorderLevel ?? "",
           input.notes?.trim() ?? "",
+          price ?? "",
         ],
       ],
     },
@@ -502,6 +545,7 @@ export async function updateItemMetadata(
     reorderLevel:
       update.reorderLevel !== undefined ? update.reorderLevel : item.reorderLevel,
     notes: update.notes ?? item.notes,
+    price: update.price !== undefined ? parsePrice(update.price) : item.price,
   };
 
   nextItem.closingStock = calculateClosingStock(
@@ -511,9 +555,11 @@ export async function updateItemMetadata(
   );
 
   const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  await ensureInventoryPriceColumn(sheets, spreadsheetId);
   await sheets.spreadsheets.values.update({
-    spreadsheetId: getSpreadsheetId(),
-    range: `${INVENTORY_SHEET}!B${item.rowIndex}:J${item.rowIndex}`,
+    spreadsheetId,
+    range: `${INVENTORY_SHEET}!B${item.rowIndex}:K${item.rowIndex}`,
     valueInputOption: "RAW",
     requestBody: {
       values: [
@@ -527,6 +573,7 @@ export async function updateItemMetadata(
           nextItem.closingStock,
           nextItem.reorderLevel ?? "",
           nextItem.notes,
+          nextItem.price ?? "",
         ],
       ],
     },

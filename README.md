@@ -32,9 +32,9 @@ Create a spreadsheet (or copy an existing template) with the same columns, then 
 
 `Sheet1` columns:
 
-| A | B | C | D | E | F | G | H | I | J |
-|---|---|---|---|---|---|---|---|---|---|
-| Item ID | Item Name | Category | Unit | Opening Stock | Stock In | Stock Out | Closing Stock | Reorder Level | Notes |
+| A | B | C | D | E | F | G | H | I | J | K |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Item ID | Item Name | Category | Unit | Opening Stock | Stock In | Stock Out | Closing Stock | Reorder Level | Notes | Price |
 
 The app will auto-create these tabs if they do not exist:
 
