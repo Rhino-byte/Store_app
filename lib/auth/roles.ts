@@ -39,3 +39,8 @@ export function getUserRole(uid: string | null | undefined): UserRole | null {
   if (isUidAllowed(uid, "clerk")) return "clerk";
   return null;
 }
+
+/** Admins inherit staff workspace access; staff-only UIDs stay staff. */
+export function canUseStaffPortal(uid: string | null | undefined): boolean {
+  return isUidAllowed(uid, "clerk") || isUidAllowed(uid, "admin");
+}

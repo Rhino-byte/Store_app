@@ -90,6 +90,7 @@ export async function fetchKitchenReport(date: string): Promise<{
     itemName: string | null;
     stockIn: number;
     stockOut: number;
+    closingStock: number | null;
     destination: string;
     matched: boolean;
   }>;

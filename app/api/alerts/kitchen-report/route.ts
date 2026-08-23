@@ -8,7 +8,7 @@ import { requireAdmin } from "@/lib/auth/api-auth";
 import { yesterdayDateKey } from "@/lib/dates";
 import { buildKitchenDailyReport } from "@/lib/kitchen-report";
 import { isValidDateKey } from "@/lib/reports";
-import { getInventoryItems, getTransactions } from "@/lib/sheets";
+import { getCorrections, getInventoryItems, getTransactions } from "@/lib/sheets";
 
 export async function GET(request: Request) {
   try {
@@ -46,11 +46,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const [items, transactions] = await Promise.all([
+    const [items, transactions, corrections] = await Promise.all([
       getInventoryItems(),
       getTransactions(),
+      getCorrections(),
     ]);
-    const rows = buildKitchenDailyReport(items, transactions, requested);
+    const rows = buildKitchenDailyReport(
+      items,
+      transactions,
+      requested,
+      corrections
+    );
     await sendKitchenDailyReportEmail(requested, rows);
 
     return NextResponse.json({ success: true, date: requested });

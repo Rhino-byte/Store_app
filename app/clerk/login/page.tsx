@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { LoadingSpinner, LoadingState } from "@/components/ui/loading-state";
 import { signInWithGoogle, signOutFirebase } from "@/lib/auth/firebase-client";
 import { fetchPortalStatus, portalLogin } from "@/lib/auth/portal-client";
-import { isUidAllowed } from "@/lib/auth/roles";
+import { canUseStaffPortal, isUidAllowed } from "@/lib/auth/roles";
 import { useFirebaseAuth } from "@/lib/auth/use-firebase-auth";
 
 function ClerkLoginContent() {
@@ -40,9 +40,12 @@ function ClerkLoginContent() {
       return;
     }
 
-    if (!isUidAllowed(user.uid, "clerk")) {
+    if (!canUseStaffPortal(user.uid)) {
       return;
     }
+
+    const isAdmin = isUidAllowed(user.uid, "admin");
+    const isClerk = isUidAllowed(user.uid, "clerk");
 
     let cancelled = false;
     setCheckingPortal(true);
@@ -54,6 +57,8 @@ function ClerkLoginContent() {
         }
         if (ok) {
           router.replace("/clerk/stock-out");
+        } else if (isAdmin && !isClerk) {
+          router.replace("/admin/login");
         } else {
           setAwaitingPassword(true);
         }
@@ -73,7 +78,19 @@ function ClerkLoginContent() {
     setSigningIn(true);
     try {
       const result = await signInWithGoogle();
-      if (!isUidAllowed(result.user.uid, "clerk")) {
+      const uid = result.user.uid;
+      if (isUidAllowed(uid, "admin")) {
+        const portalOk = await fetchPortalStatus("clerk");
+        if (portalOk) {
+          router.replace("/clerk/stock-out");
+        } else if (!isUidAllowed(uid, "clerk")) {
+          router.replace("/admin/login");
+        } else {
+          setAwaitingPassword(true);
+        }
+        return;
+      }
+      if (!isUidAllowed(uid, "clerk")) {
         await signOutFirebase();
         toast.error("Access denied. This account is not staff.");
         return;

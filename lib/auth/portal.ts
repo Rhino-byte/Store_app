@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import type { UserRole } from "@/lib/auth/roles";
+import { isUidAllowed, type UserRole } from "@/lib/auth/roles";
 
 export const PORTAL_COOKIE_NAME = "portal";
 
@@ -62,6 +62,17 @@ export function hasValidPortalCookie(
   }
   const expected = createPortalToken(uid, role);
   return constantTimeEqual(cookieValue, expected);
+}
+
+/** Staff pages/APIs: clerk cookie, or admin cookie for an admin UID. */
+export function hasStaffPortalAccess(request: Request, uid: string): boolean {
+  if (isUidAllowed(uid, "clerk") && hasValidPortalCookie(request, uid, "clerk")) {
+    return true;
+  }
+  if (isUidAllowed(uid, "admin") && hasValidPortalCookie(request, uid, "admin")) {
+    return true;
+  }
+  return false;
 }
 
 export function buildPortalCookieHeader(uid: string, role: UserRole): string {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isUidAllowed } from "@/lib/auth/roles";
+import { canUseStaffPortal } from "@/lib/auth/roles";
 import { signOutFirebase } from "@/lib/auth/firebase-client";
 import { fetchPortalStatus } from "@/lib/auth/portal-client";
 import { useFirebaseAuth } from "@/lib/auth/use-firebase-auth";
@@ -24,7 +24,7 @@ export function ClerkAuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (!isUidAllowed(user.uid, "clerk")) {
+    if (!canUseStaffPortal(user.uid)) {
       setPortalOk(null);
       signOutFirebase().finally(() => router.replace("/clerk/login?error=access"));
       return;
@@ -56,7 +56,7 @@ export function ClerkAuthGuard({ children }: { children: React.ReactNode }) {
   }, [user, loading, router]);
 
   const allowed =
-    !loading && !!user && isUidAllowed(user.uid, "clerk") && portalOk === true;
+    !loading && !!user && canUseStaffPortal(user.uid) && portalOk === true;
 
   if (loading || portalOk === null) {
     return <LoadingState label="Checking staff access" layout="centered" />;

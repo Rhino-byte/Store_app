@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireFirebaseUser } from "@/lib/auth/api-auth";
-import { hasValidPortalCookie } from "@/lib/auth/portal";
+import { hasStaffPortalAccess, hasValidPortalCookie } from "@/lib/auth/portal";
 import { isUidAllowed, type UserRole } from "@/lib/auth/roles";
 
 function isUserRole(value: string | null): value is UserRole {
@@ -15,6 +15,12 @@ export async function GET(request: Request) {
 
     if (!isUserRole(role)) {
       return NextResponse.json({ error: "Invalid role." }, { status: 400 });
+    }
+
+    if (role === "clerk") {
+      return NextResponse.json({
+        ok: hasStaffPortalAccess(request, user.uid),
+      });
     }
 
     if (!isUidAllowed(user.uid, role)) {

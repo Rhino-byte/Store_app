@@ -6,7 +6,7 @@ import {
 } from "@/lib/alerts";
 import { yesterdayDateKey } from "@/lib/dates";
 import { buildKitchenDailyReport } from "@/lib/kitchen-report";
-import { getInventoryItems, getTransactions } from "@/lib/sheets";
+import { getCorrections, getInventoryItems, getTransactions } from "@/lib/sheets";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -27,8 +27,16 @@ export async function GET(request: Request) {
       kitchenSkipped = "disabled";
     } else {
       try {
-        const transactions = await getTransactions();
-        const rows = buildKitchenDailyReport(items, transactions, kitchenDate);
+        const [transactions, corrections] = await Promise.all([
+          getTransactions(),
+          getCorrections(),
+        ]);
+        const rows = buildKitchenDailyReport(
+          items,
+          transactions,
+          kitchenDate,
+          corrections
+        );
         await sendKitchenDailyReportEmail(kitchenDate, rows);
         kitchenSent = true;
       } catch (error) {
