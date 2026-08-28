@@ -8,7 +8,7 @@ export type KitchenPriorityItem = {
   aliases: string[];
 };
 
-/** Kitchen daily sheet order. Items not listed stay off this report. */
+/** Seed defaults for a new KitchenReportItems sheet. After that, admins own the list. */
 export const KITCHEN_PRIORITY_ITEMS: KitchenPriorityItem[] = [
   { key: "kuku", label: "Kuku", unit: "psc", aliases: ["kuku", "chicken"] },
   {
@@ -127,6 +127,17 @@ export function matchKitchenInventory(
   return matched;
 }
 
+/** Item IDs from the hardcoded kitchen list that match current inventory. */
+export function seedKitchenReportItemIds(items: InventoryItem[]): string[] {
+  const matched = matchKitchenInventory(items);
+  const ids: string[] = [];
+  for (const slot of KITCHEN_PRIORITY_ITEMS) {
+    const item = matched.get(slot.key);
+    if (item) ids.push(item.itemId);
+  }
+  return ids;
+}
+
 type KitchenMovement = {
   stockIn: number;
   stockOut: number;
@@ -179,9 +190,10 @@ export function buildKitchenDailyReport(
   items: InventoryItem[],
   transactions: Transaction[],
   dateKey: string,
-  corrections: StockCorrection[] = []
+  corrections: StockCorrection[] = [],
+  reportItems: Array<{ itemId: string; itemName?: string }> = []
 ): KitchenDailyRow[] {
-  const matched = matchKitchenInventory(items);
+  const inventoryById = new Map(items.map((item) => [item.itemId, item]));
   const byItemId = new Map<string, KitchenMovement>();
 
   for (const tx of transactions) {
@@ -213,15 +225,16 @@ export function buildKitchenDailyReport(
     );
   }
 
-  return KITCHEN_PRIORITY_ITEMS.map((slot) => {
-    const item = matched.get(slot.key);
+  return reportItems.map((ref) => {
+    const item = inventoryById.get(ref.itemId);
     if (!item) {
+      const fallbackName = ref.itemName?.trim() || ref.itemId;
       return {
-        key: slot.key,
-        label: slot.label,
-        unit: slot.unit,
-        itemId: null,
-        itemName: null,
+        key: ref.itemId,
+        label: fallbackName,
+        unit: "",
+        itemId: ref.itemId,
+        itemName: ref.itemName?.trim() || null,
         stockIn: 0,
         stockOut: 0,
         closingStock: null,
@@ -232,9 +245,9 @@ export function buildKitchenDailyReport(
 
     const movement = byItemId.get(item.itemId);
     return {
-      key: slot.key,
-      label: slot.label,
-      unit: item.unit || slot.unit,
+      key: item.itemId,
+      label: item.itemName,
+      unit: item.unit,
       itemId: item.itemId,
       itemName: item.itemName,
       stockIn: movement?.stockIn ?? 0,

@@ -283,7 +283,7 @@ export function ReportsPageClient() {
         <div>
           <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Reports</h1>
           <p className="text-sm text-slate-500">
-            Kitchen daily list first, then full inventory summaries by period.
+            Choose kitchen daily PDF items, then full inventory summaries by period.
           </p>
         </div>
         <Button

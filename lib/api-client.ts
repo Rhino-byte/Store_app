@@ -80,6 +80,55 @@ export async function fetchDailyStock(date?: string): Promise<{
   return data;
 }
 
+export type KitchenReportPickerItem = {
+  itemId: string;
+  itemName: string;
+  unit: string;
+  matched: boolean;
+};
+
+export type KitchenReportPickerOption = {
+  itemId: string;
+  itemName: string;
+  unit: string;
+  category: string;
+};
+
+export async function fetchKitchenReportItems(): Promise<{
+  items: KitchenReportPickerItem[];
+  options: KitchenReportPickerOption[];
+}> {
+  const headers = await getFirebaseAuthHeader();
+  const response = await fetch("/api/reports/kitchen-items", {
+    headers,
+    cache: "no-store",
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error ?? "Failed to load kitchen report items");
+  }
+  return data as {
+    items: KitchenReportPickerItem[];
+    options: KitchenReportPickerOption[];
+  };
+}
+
+export async function saveKitchenReportItems(itemIds: string[]): Promise<{
+  items: Array<{ itemId: string; itemName: string }>;
+}> {
+  const headers = await getFirebaseAuthHeader();
+  const response = await fetch("/api/reports/kitchen-items", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ itemIds }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error ?? "Failed to save kitchen report items");
+  }
+  return data as { items: Array<{ itemId: string; itemName: string }> };
+}
+
 export async function fetchKitchenReport(date: string): Promise<{
   date: string;
   rows: Array<{

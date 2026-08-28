@@ -10,15 +10,18 @@ import type {
   InventoryItem,
   ItemCreateRequest,
   ItemUpdateRequest,
+  KitchenReportItemRef,
   StockCorrection,
   Transaction,
 } from "./types";
 import { DEFAULT_STOCK_DESTINATION } from "./types";
+import { seedKitchenReportItemIds } from "./kitchen-report";
 
 const INVENTORY_SHEET = "Sheet1";
 const TRANSACTIONS_SHEET = "Transactions";
 const ALERT_LOG_SHEET = "AlertLog";
 const CORRECTIONS_SHEET = "Corrections";
+const KITCHEN_REPORT_ITEMS_SHEET = "KitchenReportItems";
 
 function getSpreadsheetId(): string {
   const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
@@ -112,6 +115,12 @@ export async function ensureAuxiliarySheets(): Promise<void> {
     });
   }
 
+  if (!existing.has(KITCHEN_REPORT_ITEMS_SHEET)) {
+    requests.push({
+      addSheet: { properties: { title: KITCHEN_REPORT_ITEMS_SHEET } },
+    });
+  }
+
   if (requests.length) {
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
@@ -173,6 +182,33 @@ export async function ensureAuxiliarySheets(): Promise<void> {
         ],
       },
     });
+  }
+
+  if (!existing.has(KITCHEN_REPORT_ITEMS_SHEET)) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${KITCHEN_REPORT_ITEMS_SHEET}!A1:B1`,
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [["Item ID", "Item Name"]],
+      },
+    });
+    const inventory = await getInventoryItems();
+    const seededIds = seedKitchenReportItemIds(inventory);
+    if (seededIds.length) {
+      const byId = new Map(inventory.map((item) => [item.itemId, item]));
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${KITCHEN_REPORT_ITEMS_SHEET}!A2:B${seededIds.length + 1}`,
+        valueInputOption: "RAW",
+        requestBody: {
+          values: seededIds.map((itemId) => [
+            itemId,
+            byId.get(itemId)?.itemName ?? "",
+          ]),
+        },
+      });
+    }
   }
 }
 
@@ -627,4 +663,69 @@ export async function upsertAlertLog(entry: AlertLogEntry): Promise<void> {
       values: [[entry.itemId, entry.lastAlertedAt, entry.stockAtAlert]],
     },
   });
+}
+
+export async function getKitchenReportItems(): Promise<KitchenReportItemRef[]> {
+  await ensureAuxiliarySheets();
+  const sheets = getSheetsClient();
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: getSpreadsheetId(),
+    range: `${KITCHEN_REPORT_ITEMS_SHEET}!A2:B`,
+  });
+
+  const rows = response.data.values ?? [];
+  const seen = new Set<string>();
+  const items: KitchenReportItemRef[] = [];
+
+  for (const row of rows) {
+    const itemId = String(row[0] ?? "").trim();
+    if (!itemId || seen.has(itemId)) continue;
+    seen.add(itemId);
+    items.push({
+      itemId,
+      itemName: String(row[1] ?? "").trim(),
+    });
+  }
+
+  return items;
+}
+
+export async function saveKitchenReportItems(
+  itemIds: string[]
+): Promise<KitchenReportItemRef[]> {
+  await ensureAuxiliarySheets();
+  const inventory = await getInventoryItems();
+  const byId = new Map(inventory.map((item) => [item.itemId, item]));
+  const seen = new Set<string>();
+  const next: KitchenReportItemRef[] = [];
+
+  for (const rawId of itemIds) {
+    const itemId = String(rawId ?? "").trim();
+    if (!itemId || seen.has(itemId)) continue;
+    const item = byId.get(itemId);
+    if (!item) continue;
+    seen.add(itemId);
+    next.push({ itemId: item.itemId, itemName: item.itemName });
+  }
+
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId,
+    range: `${KITCHEN_REPORT_ITEMS_SHEET}!A2:B`,
+  });
+
+  if (next.length) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${KITCHEN_REPORT_ITEMS_SHEET}!A2:B${next.length + 1}`,
+      valueInputOption: "RAW",
+      requestBody: {
+        values: next.map((item) => [item.itemId, item.itemName]),
+      },
+    });
+  }
+
+  return next;
 }

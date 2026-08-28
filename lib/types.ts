@@ -101,3 +101,9 @@ export interface ItemCreateRequest {
   notes?: string;
   price?: number | null;
 }
+
+/** Row on the KitchenReportItems sheet (order = daily PDF order). */
+export interface KitchenReportItemRef {
+  itemId: string;
+  itemName: string;
+}

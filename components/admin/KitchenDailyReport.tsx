@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { KitchenReportItemPicker } from "@/components/admin/KitchenReportItemPicker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -30,6 +31,11 @@ export function KitchenDailyReport() {
   const [date, setDate] = useState(() => todayDateKey());
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<KitchenRow[]>([]);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  const reloadPreview = useCallback(() => {
+    setReloadToken((current) => current + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,7 +63,7 @@ export function KitchenDailyReport() {
     return () => {
       cancelled = true;
     };
-  }, [date]);
+  }, [date, reloadToken]);
 
   return (
     <section className="space-y-3">
@@ -67,8 +73,8 @@ export function KitchenDailyReport() {
             Kitchen daily
           </h2>
           <p className="text-sm text-slate-500">
-            Priority kitchen items only. Close is remaining stock at the end of
-            the selected day.
+            Close is remaining stock at the end of the selected day. Use Edit
+            PDF items to change the daily kitchen list.
           </p>
         </div>
         <div className="w-full space-y-2 sm:w-auto">
@@ -83,12 +89,18 @@ export function KitchenDailyReport() {
         </div>
       </div>
 
+      <KitchenReportItemPicker onSaved={reloadPreview} />
+
       {loading ? (
         <LoadingState
           label="Loading kitchen report"
           layout="centered"
           className="min-h-[20vh]"
         />
+      ) : rows.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+          No items on the kitchen daily PDF yet. Add items above.
+        </p>
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200">
           <table className="w-full table-fixed text-xs sm:text-sm">

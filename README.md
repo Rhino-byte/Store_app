@@ -7,7 +7,7 @@ A Next.js inventory app for Merry Mary Hotel that uses Google Sheets as the sour
 - **Staff workspace:** record stock in and stock out against the shared Google Sheet
 - **Admin dashboard:** KPIs, low-stock table, item management, analytics charts
 - **Email alerts:** SMTP notifications when stock falls to the reorder level
-- **Kitchen daily PDF:** yesterday’s priority kitchen items emailed at 08:00 EAT after you enable cron
+- **Kitchen daily PDF:** yesterday’s selected kitchen items emailed at 08:00 EAT after you enable cron. Admins choose the list on `/admin/reports`.
 - **Audit log:** every movement is appended to a `Transactions` sheet tab
 
 ## Tech stack
@@ -40,6 +40,8 @@ The app will auto-create these tabs if they do not exist:
 
 - `Transactions` — audit log columns: Timestamp, Item ID, Item Name, Type, Quantity, User Email, Notes, **Destination** (stock-out: Charity Work / Office / Kitchen / House Keeping; blank stock-outs default to Kitchen)
 - `AlertLog`
+- `Corrections`
+- `KitchenReportItems` — Item ID and Item Name; row order is the daily kitchen PDF order. Managed by admins on `/admin/reports`. The first time the tab is created, it is seeded from the previous hardcoded kitchen list (Kuku, Ugali, and so on) by matching inventory names.
 
 Share the spreadsheet with your service account email as **Editor**.
 
@@ -101,7 +103,7 @@ Open `http://localhost:3000`.
 | `/admin/login` | Admin | Google sign-in + admin password |
 | `/admin/dashboard` | Admin | KPIs and low-stock list |
 | `/admin/analytics` | Admin | Charts + daily stock by date |
-| `/admin/reports` | Admin | Period reports (weekly/monthly/4 months/custom) |
+| `/admin/reports` | Admin | Kitchen daily PDF item list, preview, and period reports (weekly/monthly/4 months/custom) |
 | `/admin/items` | Admin | Edit items and reorder levels |
 | `/admin/alerts` | Admin | Test email, send kitchen PDF, low-stock review |
 | `/clerk/login` | Staff | Google sign-in + staff password |
@@ -116,7 +118,7 @@ Open `http://localhost:3000`.
 3. Add all environment variables from `.env.example`
 4. Deploy
 
-`vercel.json` includes a daily cron at **08:00 EAT** (`0 5 * * *`, 05:00 UTC) that calls `/api/cron/check-stock`. That job always runs the low-stock check. It sends yesterday’s kitchen PDF only when `KITCHEN_REPORT_CRON_ENABLED=true`.
+`vercel.json` includes a daily cron at **08:00 EAT** (`0 5 * * *`, 05:00 UTC) that calls `/api/cron/check-stock`. That job always runs the low-stock check. It sends yesterday’s kitchen PDF (items chosen on `/admin/reports`) only when `KITCHEN_REPORT_CRON_ENABLED=true`.
 
 `KITCHEN_REPORT_HOUR_EAT` is a label on `/admin/alerts` (for example `08:00 EAT`). Changing it does not move the Vercel clock; change the cron expression in `vercel.json` to change send time.
 

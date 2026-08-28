@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/auth/api-auth";
 import { todayDateKey } from "@/lib/dates";
 import { buildKitchenDailyReport } from "@/lib/kitchen-report";
 import { isValidDateKey } from "@/lib/reports";
-import { getCorrections, getInventoryItems, getTransactions } from "@/lib/sheets";
+import { getCorrections, getInventoryItems, getKitchenReportItems, getTransactions } from "@/lib/sheets";
 
 export async function GET(request: Request) {
   try {
@@ -18,17 +18,19 @@ export async function GET(request: Request) {
       );
     }
 
-    const [items, transactions, corrections] = await Promise.all([
+    const [items, transactions, corrections, reportItems] = await Promise.all([
       getInventoryItems(),
       getTransactions(),
       getCorrections(),
+      getKitchenReportItems(),
     ]);
 
     const rows = buildKitchenDailyReport(
       items,
       transactions,
       requested,
-      corrections
+      corrections,
+      reportItems
     );
 
     return NextResponse.json({
