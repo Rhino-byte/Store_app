@@ -59,7 +59,19 @@ export type KitchenDailyRow = {
   closingStock: number | null;
   destination: string;
   matched: boolean;
+  /** stockOut × unit price; null when the item has no Sheet1 price. */
+  outValue: number | null;
 };
+
+export function kitchenOutValueTotal(rows: KitchenDailyRow[]): number {
+  return rows.reduce((sum, row) => sum + (row.outValue ?? 0), 0);
+}
+
+export function kitchenHasMissingOutPrice(rows: KitchenDailyRow[]): boolean {
+  return rows.some(
+    (row) => row.matched && row.stockOut > 0 && row.outValue === null
+  );
+}
 
 export function formatKitchenReportHourLabel(hourEat: number): string {
   const hour = Math.min(23, Math.max(0, Math.trunc(hourEat)));
@@ -240,10 +252,12 @@ export function buildKitchenDailyReport(
         closingStock: null,
         destination: "",
         matched: false,
+        outValue: null,
       };
     }
 
     const movement = byItemId.get(item.itemId);
+    const stockOut = movement?.stockOut ?? 0;
     return {
       key: item.itemId,
       label: item.itemName,
@@ -251,7 +265,7 @@ export function buildKitchenDailyReport(
       itemId: item.itemId,
       itemName: item.itemName,
       stockIn: movement?.stockIn ?? 0,
-      stockOut: movement?.stockOut ?? 0,
+      stockOut,
       closingStock:
         item.openingStock +
         (movement?.throughIn ?? 0) -
@@ -260,6 +274,7 @@ export function buildKitchenDailyReport(
         ? Array.from(movement.destinations).sort().join(", ")
         : "",
       matched: true,
+      outValue: item.price === null ? null : stockOut * item.price,
     };
   });
 }

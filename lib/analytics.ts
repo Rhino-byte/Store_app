@@ -1,7 +1,6 @@
 import {
   dateKeysInclusive,
   isDateKeyInRange,
-  previousRollingDateRange,
   rollingDateRange,
   todayDateKey,
   transactionDateKey,
@@ -21,22 +20,6 @@ export type InventoryOption = {
   itemId: string;
   itemName: string;
   category: string;
-};
-
-export type DailyItemSeries = {
-  items: Array<{ itemId: string; itemName: string }>;
-  points: Array<Record<string, string | number>>;
-};
-
-export type PeriodComparisonSeries = {
-  labels: string[];
-  current: number[];
-  previous: number[];
-  points: Array<{
-    label: string;
-    current: number;
-    previous: number;
-  }>;
 };
 
 export type StockHealthSnapshot = {
@@ -479,195 +462,6 @@ export function inventoryOptions(
 }
 
 /**
- * Total stock-out quantity per calendar day in [from, to], 0-filled.
- */
-export function dailyOutTotals(
-  transactions: Transaction[],
-  from: string,
-  to: string,
-  options?: {
-    category?: string;
-    items?: InventoryItem[];
-    itemIds?: string[];
-    destination?: string | null;
-  }
-): number[] {
-  const dayKeys = dateKeysInclusive(from, to);
-  if (!dayKeys.length) return [];
-
-  const categoryByItemId = options?.items
-    ? itemCategoryMap(options.items)
-    : undefined;
-  const itemIdSet = options?.itemIds ? new Set(options.itemIds) : undefined;
-
-  const outs = filterOutTransactions(transactions, {
-    from,
-    to,
-    itemIds: itemIdSet,
-    category: options?.category,
-    categoryByItemId,
-    destination: options?.destination,
-  });
-
-  const byDay = new Map<string, number>();
-  for (const day of dayKeys) byDay.set(day, 0);
-  for (const tx of outs) {
-    const day = transactionDateKey(tx.timestamp);
-    if (!byDay.has(day)) continue;
-    byDay.set(day, (byDay.get(day) ?? 0) + tx.quantity);
-  }
-
-  return dayKeys.map((day) => byDay.get(day) ?? 0);
-}
-
-/**
- * Dual-series period comparison aligned by day-of-window index.
- */
-export function periodComparisonSeries(
-  transactions: Transaction[],
-  days: number,
-  options?: {
-    category?: string;
-    items?: InventoryItem[];
-    destination?: string | null;
-  }
-): PeriodComparisonSeries {
-  const span = days <= 0 ? 1 : days;
-  const currentRange = rollingDateRange(span);
-  const previousRange = previousRollingDateRange(span);
-  const currentKeys = dateKeysInclusive(currentRange.from, currentRange.to);
-
-  const current = dailyOutTotals(
-    transactions,
-    currentRange.from,
-    currentRange.to,
-    options
-  );
-  const previous = dailyOutTotals(
-    transactions,
-    previousRange.from,
-    previousRange.to,
-    options
-  );
-
-  const labels = currentKeys.map((key) => periodAxisLabel(key, span));
-
-  const points = labels.map((label, index) => ({
-    label,
-    current: current[index] ?? 0,
-    previous: previous[index] ?? 0,
-  }));
-
-  return { labels, current, previous, points };
-}
-
-/**
- * Top N consumed items in a category, with daily out series.
- */
-export function topConsumedDailyByCategory(
-  transactions: Transaction[],
-  items: InventoryItem[],
-  options: {
-    category?: string;
-    from: string;
-    to: string;
-    limit?: number;
-    destination?: string | null;
-  }
-): DailyItemSeries {
-  const limit = options.limit ?? 5;
-  const categoryByItemId = itemCategoryMap(items);
-  const category = options.category?.trim() || "all";
-
-  const outs = filterOutTransactions(transactions, {
-    from: options.from,
-    to: options.to,
-    category,
-    categoryByItemId,
-    destination: options.destination,
-  });
-
-  const totals = new Map<string, { itemName: string; quantity: number }>();
-  for (const tx of outs) {
-    const current = totals.get(tx.itemId) ?? {
-      itemName: tx.itemName,
-      quantity: 0,
-    };
-    current.quantity += tx.quantity;
-    if (tx.itemName) current.itemName = tx.itemName;
-    totals.set(tx.itemId, current);
-  }
-
-  const ranked = Array.from(totals.entries())
-    .map(([itemId, data]) => ({ itemId, ...data }))
-    .sort((a, b) => b.quantity - a.quantity)
-    .slice(0, limit);
-
-  return itemDailyOutSeries(
-    transactions,
-    ranked.map((r) => r.itemId),
-    options.from,
-    options.to,
-    new Map(ranked.map((r) => [r.itemId, r.itemName])),
-    options.destination
-  );
-}
-
-/**
- * Daily stock-out series for specific item IDs over [from, to].
- */
-export function itemDailyOutSeries(
-  transactions: Transaction[],
-  itemIds: string[],
-  from: string,
-  to: string,
-  namesById?: Map<string, string>,
-  destination?: string | null
-): DailyItemSeries {
-  const dayKeys = dateKeysInclusive(from, to);
-  const idSet = new Set(itemIds);
-  if (!itemIds.length || !dayKeys.length) {
-    return { items: [], points: [] };
-  }
-
-  const nameMap = new Map<string, string>(namesById);
-  const daily = new Map<string, Map<string, number>>();
-  for (const day of dayKeys) {
-    daily.set(day, new Map());
-  }
-
-  for (const tx of transactions) {
-    if (tx.type !== "out" || !idSet.has(tx.itemId)) continue;
-    if (!matchesDestination(tx, destination)) continue;
-    const day = transactionDateKey(tx.timestamp);
-    if (!daily.has(day)) continue;
-    if (tx.itemName) nameMap.set(tx.itemId, tx.itemName);
-    const dayMap = daily.get(day)!;
-    dayMap.set(tx.itemId, (dayMap.get(tx.itemId) ?? 0) + tx.quantity);
-  }
-
-  const seriesItems = itemIds.map((itemId) => ({
-    itemId,
-    itemName: nameMap.get(itemId) ?? itemId,
-  }));
-
-  const span = dayKeys.length;
-  const points = dayKeys.map((date) => {
-    const row: Record<string, string | number> = {
-      date,
-      label: periodAxisLabel(date, span),
-    };
-    const dayMap = daily.get(date)!;
-    for (const itemId of itemIds) {
-      row[itemId] = dayMap.get(itemId) ?? 0;
-    }
-    return row;
-  });
-
-  return { items: seriesItems, points };
-}
-
-/**
  * Item out matrix for compare chart.
  * Span: today→1, 7→7, else min(pageDays, 30) for readability.
  * Series data covers all items (any category); topItemIds are category-scoped defaults.
@@ -736,21 +530,4 @@ export function weeklyItemOutMatrix(
   daysForPage: number
 ): ItemOutMatrix {
   return itemOutMatrix(transactions, [], daysForPage);
-}
-
-export function topConsumedDailyForFilters(
-  transactions: Transaction[],
-  items: InventoryItem[],
-  days: number,
-  options: { category: string; destination?: string | null; limit?: number }
-): DailyItemSeries {
-  const span = days <= 0 ? 1 : days;
-  const { from, to } = rollingDateRange(span);
-  return topConsumedDailyByCategory(transactions, items, {
-    category: options.category,
-    from,
-    to,
-    limit: options.limit ?? 5,
-    destination: options.destination,
-  });
 }

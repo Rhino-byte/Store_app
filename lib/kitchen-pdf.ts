@@ -1,9 +1,11 @@
 import PDFDocument from "pdfkit";
 import {
   formatKitchenReportDateLabel,
+  kitchenHasMissingOutPrice,
+  kitchenOutValueTotal,
   type KitchenDailyRow,
 } from "@/lib/kitchen-report";
-import { formatNumber } from "@/lib/utils";
+import { formatMoney, formatNumber } from "@/lib/utils";
 
 const MARGIN = 20;
 const TITLE_SIZE = 15;
@@ -18,6 +20,10 @@ export function kitchenReportPdfFilename(dateKey: string): string {
 
 function formatClosing(value: number | null): string {
   return value === null ? "—" : formatNumber(value);
+}
+
+function formatValue(value: number | null): string {
+  return value === null ? "—" : formatMoney(value);
 }
 
 export function buildKitchenReportPdf(
@@ -44,10 +50,10 @@ export function buildKitchenReportPdf(
     const pageWidth = doc.page.width;
     const pageHeight = doc.page.height;
     const contentWidth = pageWidth - MARGIN * 2;
-    const colItem = contentWidth * 0.46;
-    const colIn = contentWidth * 0.18;
-    const colOut = contentWidth * 0.18;
-    const colClose = contentWidth * 0.18;
+    const colItem = contentWidth * 0.36;
+    const colNum = contentWidth * 0.16;
+    const valueTotal = kitchenOutValueTotal(rows);
+    const missingPrice = kitchenHasMissingOutPrice(rows);
 
     function drawTableHeader(y: number) {
       doc.save();
@@ -59,17 +65,22 @@ export function buildKitchenReportPdf(
         lineBreak: false,
       });
       doc.text("In", MARGIN + colItem, textY, {
-        width: colIn - 4,
+        width: colNum - 4,
         align: "right",
         lineBreak: false,
       });
-      doc.text("Out", MARGIN + colItem + colIn, textY, {
-        width: colOut - 4,
+      doc.text("Out", MARGIN + colItem + colNum, textY, {
+        width: colNum - 4,
         align: "right",
         lineBreak: false,
       });
-      doc.text("Close", MARGIN + colItem + colIn + colOut, textY, {
-        width: colClose - 4,
+      doc.text("Close", MARGIN + colItem + colNum * 2, textY, {
+        width: colNum - 4,
+        align: "right",
+        lineBreak: false,
+      });
+      doc.text("Value", MARGIN + colItem + colNum * 3, textY, {
+        width: colNum - 4,
         align: "right",
         lineBreak: false,
       });
@@ -96,7 +107,7 @@ export function buildKitchenReportPdf(
       const hasSub = Boolean(row.destination) || !row.matched;
       const rowHeight = hasSub ? 32 : 22;
 
-      if (y + rowHeight > pageHeight - MARGIN - 24) {
+      if (y + rowHeight > pageHeight - MARGIN - 48) {
         doc.addPage();
         y = MARGIN;
         drawTableHeader(y);
@@ -118,21 +129,26 @@ export function buildKitchenReportPdf(
       });
       doc.font("Helvetica").fontSize(BODY_SIZE);
       doc.text(formatNumber(row.stockIn), MARGIN + colItem, textY, {
-        width: colIn - 4,
+        width: colNum - 4,
         align: "right",
         lineBreak: false,
       });
-      doc.text(formatNumber(row.stockOut), MARGIN + colItem + colIn, textY, {
-        width: colOut - 4,
+      doc.text(formatNumber(row.stockOut), MARGIN + colItem + colNum, textY, {
+        width: colNum - 4,
         align: "right",
         lineBreak: false,
       });
       doc.text(
         formatClosing(row.closingStock),
-        MARGIN + colItem + colIn + colOut,
+        MARGIN + colItem + colNum * 2,
         textY,
-        { width: colClose - 4, align: "right", lineBreak: false }
+        { width: colNum - 4, align: "right", lineBreak: false }
       );
+      doc.text(formatValue(row.outValue), MARGIN + colItem + colNum * 3, textY, {
+        width: colNum - 4,
+        align: "right",
+        lineBreak: false,
+      });
 
       if (hasSub) {
         const sub =
@@ -151,14 +167,32 @@ export function buildKitchenReportPdf(
       y += rowHeight;
     });
 
+    const totalHeight = 22;
+    if (y + totalHeight > pageHeight - MARGIN - 28) {
+      doc.addPage();
+      y = MARGIN;
+    }
+    doc.save();
+    doc.rect(MARGIN, y, contentWidth, totalHeight).fill("#e2e8f0");
+    doc.restore();
+    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(BODY_SIZE);
+    doc.text("Total", MARGIN + 4, y + 4, {
+      width: colItem + colNum * 2 - 8,
+      lineBreak: false,
+    });
+    doc.text(formatMoney(valueTotal), MARGIN + colItem + colNum * 3, y + 4, {
+      width: colNum - 4,
+      align: "right",
+      lineBreak: false,
+    });
+    y += totalHeight;
+
     const footerY = Math.min(y + 10, pageHeight - MARGIN - 12);
     doc.font("Helvetica").fontSize(8).fillColor("#64748b");
-    doc.text(
-      "Close is stock remaining at end of this day. Store items are omitted.",
-      MARGIN,
-      footerY,
-      { width: contentWidth }
-    );
+    const footerNote = missingPrice
+      ? "Value is stock out × unit price. Items without a price are omitted from the total."
+      : "Value is stock out × unit price. Close is stock remaining at end of this day.";
+    doc.text(footerNote, MARGIN, footerY, { width: contentWidth });
 
     doc.end();
   });
@@ -169,6 +203,8 @@ export function buildKitchenReportEmailHtml(
   rows: KitchenDailyRow[]
 ): string {
   const dateLabel = formatKitchenReportDateLabel(dateKey);
+  const valueTotal = kitchenOutValueTotal(rows);
+  const missingPrice = kitchenHasMissingOutPrice(rows);
   const bodyRows = rows
     .map((row) => {
       const note = !row.matched
@@ -184,12 +220,17 @@ export function buildKitchenReportEmailHtml(
           ${dest}
           ${note}
         </td>
-        <td style="padding:8px 4px;border-bottom:1px solid #e2e8f0;font-size:14px;text-align:right;white-space:nowrap;width:18%;">${formatNumber(row.stockIn)}</td>
-        <td style="padding:8px 4px;border-bottom:1px solid #e2e8f0;font-size:14px;text-align:right;white-space:nowrap;width:18%;">${formatNumber(row.stockOut)}</td>
-        <td style="padding:8px 4px;border-bottom:1px solid #e2e8f0;font-size:14px;text-align:right;white-space:nowrap;width:18%;">${formatClosing(row.closingStock)}</td>
+        <td style="padding:8px 4px;border-bottom:1px solid #e2e8f0;font-size:14px;text-align:right;white-space:nowrap;width:14%;">${formatNumber(row.stockIn)}</td>
+        <td style="padding:8px 4px;border-bottom:1px solid #e2e8f0;font-size:14px;text-align:right;white-space:nowrap;width:14%;">${formatNumber(row.stockOut)}</td>
+        <td style="padding:8px 4px;border-bottom:1px solid #e2e8f0;font-size:14px;text-align:right;white-space:nowrap;width:14%;">${formatClosing(row.closingStock)}</td>
+        <td style="padding:8px 4px;border-bottom:1px solid #e2e8f0;font-size:14px;text-align:right;white-space:nowrap;width:16%;">${formatValue(row.outValue)}</td>
       </tr>`;
     })
     .join("");
+
+  const missingNote = missingPrice
+    ? " Some items have no unit price and are omitted from the total."
+    : "";
 
   return `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.35;color:#0f172a;max-width:100%;margin:0 auto;">
     <h1 style="font-size:18px;margin:0 0 4px;">Merry Mary Hotel</h1>
@@ -198,14 +239,20 @@ export function buildKitchenReportEmailHtml(
       <thead>
         <tr>
           <th style="text-align:left;padding:8px 6px;background:#0f172a;color:#fff;font-size:13px;">Item</th>
-          <th style="text-align:right;padding:8px 4px;background:#0f172a;color:#fff;font-size:13px;width:18%;">In</th>
-          <th style="text-align:right;padding:8px 4px;background:#0f172a;color:#fff;font-size:13px;width:18%;">Out</th>
-          <th style="text-align:right;padding:8px 4px;background:#0f172a;color:#fff;font-size:13px;width:18%;">Close</th>
+          <th style="text-align:right;padding:8px 4px;background:#0f172a;color:#fff;font-size:13px;width:14%;">In</th>
+          <th style="text-align:right;padding:8px 4px;background:#0f172a;color:#fff;font-size:13px;width:14%;">Out</th>
+          <th style="text-align:right;padding:8px 4px;background:#0f172a;color:#fff;font-size:13px;width:14%;">Close</th>
+          <th style="text-align:right;padding:8px 4px;background:#0f172a;color:#fff;font-size:13px;width:16%;">Value</th>
         </tr>
       </thead>
-      <tbody>${bodyRows}</tbody>
+      <tbody>${bodyRows}
+        <tr>
+          <td colspan="4" style="padding:8px 6px;background:#e2e8f0;font-size:14px;font-weight:700;">Total</td>
+          <td style="padding:8px 4px;background:#e2e8f0;font-size:14px;text-align:right;white-space:nowrap;font-weight:700;">${formatMoney(valueTotal)}</td>
+        </tr>
+      </tbody>
     </table>
-    <p style="margin:12px 0 0;color:#475569;font-size:13px;">Close is remaining stock at end of this day. PDF attached.</p>
+    <p style="margin:12px 0 0;color:#475569;font-size:13px;">Value is stock out × unit price. PDF attached.${missingNote}</p>
   </div>`;
 }
 
@@ -221,11 +268,17 @@ export function buildKitchenReportEmailText(
       const unit = row.unit ? ` (${row.unit})` : "";
       const dest = row.destination ? ` dest: ${row.destination}` : "";
       const missing = row.matched ? "" : " [not in inventory]";
-      return `${row.label}${unit}: in ${formatNumber(row.stockIn)}, out ${formatNumber(row.stockOut)}, close ${formatClosing(row.closingStock)}${dest}${missing}`;
+      return `${row.label}${unit}: in ${formatNumber(row.stockIn)}, out ${formatNumber(row.stockOut)}, close ${formatClosing(row.closingStock)}, value ${formatValue(row.outValue)}${dest}${missing}`;
     }),
     "",
-    "PDF attached.",
+    `Total value: ${formatMoney(kitchenOutValueTotal(rows))}`,
   ];
+  if (kitchenHasMissingOutPrice(rows)) {
+    lines.push(
+      "Some items have no unit price and are omitted from the total."
+    );
+  }
+  lines.push("PDF attached.");
   return lines.join("\n");
 }
 

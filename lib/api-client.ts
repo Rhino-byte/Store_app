@@ -1,14 +1,13 @@
 import type {
   DailyInOutPoint,
-  DailyItemSeries,
   DailyStockItem,
   DestinationTotal,
   InventoryOption,
   ItemOutMatrix,
-  PeriodComparisonSeries,
   StockHealthSnapshot,
   UserActivitySeries,
 } from "@/lib/analytics";
+import type { KitchenDailyRow } from "@/lib/kitchen-report";
 import type {
   DashboardStats,
   InventoryItem,
@@ -27,8 +26,6 @@ export type AnalyticsPayload = {
   inventoryOptions: InventoryOption[];
   dailyMovement: DailyInOutPoint[];
   destinationTotals: DestinationTotal[];
-  topConsumedDaily: DailyItemSeries;
-  periodComparison: PeriodComparisonSeries;
   itemOuts: ItemOutMatrix;
   userActivity: UserActivitySeries;
 };
@@ -131,18 +128,7 @@ export async function saveKitchenReportItems(itemIds: string[]): Promise<{
 
 export async function fetchKitchenReport(date: string): Promise<{
   date: string;
-  rows: Array<{
-    key: string;
-    label: string;
-    unit: string;
-    itemId: string | null;
-    itemName: string | null;
-    stockIn: number;
-    stockOut: number;
-    closingStock: number | null;
-    destination: string;
-    matched: boolean;
-  }>;
+  rows: KitchenDailyRow[];
 }> {
   const headers = await getFirebaseAuthHeader();
   const response = await fetch(

@@ -7,9 +7,7 @@ import {
   inventoryOptions,
   itemOutMatrix,
   listCategories,
-  periodComparisonSeries,
   stockHealthSnapshot,
-  topConsumedDailyForFilters,
   userActivityByDay,
 } from "@/lib/analytics";
 import { requireAdmin } from "@/lib/auth/api-auth";
@@ -59,16 +57,6 @@ export async function GET(request: Request) {
       }),
       destinationTotals: destinationBreakdown(transactions, items, days, {
         category,
-      }),
-      topConsumedDaily: topConsumedDailyForFilters(transactions, items, days, {
-        category,
-        destination,
-        limit: 5,
-      }),
-      periodComparison: periodComparisonSeries(transactions, days, {
-        category,
-        items,
-        destination,
       }),
       itemOuts: itemOutMatrix(transactions, items, days, {
         category,

@@ -8,3 +8,7 @@ export function cn(...inputs: ClassValue[]) {
 export function formatNumber(value: number): string {
   return Number.isInteger(value) ? value.toString() : value.toFixed(2);
 }
+
+export function formatMoney(value: number): string {
+  return value.toFixed(2);
+}

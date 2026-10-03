@@ -2,13 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AdminDailyStockSection } from "@/components/admin/AdminDailyStockSection";
 import { DestinationBreakdownChart } from "@/components/admin/DestinationBreakdownChart";
 import { InOutMovementChart } from "@/components/admin/InOutMovementChart";
 import { ItemUsageCompareChart } from "@/components/admin/ItemUsageCompareChart";
-import { PeriodComparisonChart } from "@/components/admin/PeriodComparisonChart";
 import { StockHealthCards } from "@/components/admin/StockHealthCards";
-import { TopUsedDailyChart } from "@/components/admin/TopUsedDailyChart";
 import { UserActivityChart } from "@/components/admin/UserActivityChart";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -23,7 +20,6 @@ import {
 import type { AnalyticsPayload } from "@/lib/api-client";
 import { fetchAnalytics } from "@/lib/api-client";
 import { getFirebaseAuthHeader } from "@/lib/auth/use-firebase-auth";
-import { todayDateKey } from "@/lib/dates";
 
 const RANGE_OPTIONS = [
   { label: "Today", value: 0 },
@@ -36,7 +32,6 @@ export function AnalyticsPageClient() {
   const [days, setDays] = useState(30);
   const [category, setCategory] = useState("");
   const [destination, setDestination] = useState("all");
-  const [selectedDate, setSelectedDate] = useState(() => todayDateKey());
   const [compareItemIds, setCompareItemIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AnalyticsPayload | null>(null);
@@ -171,19 +166,6 @@ export function AnalyticsPageClient() {
             />
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <TopUsedDailyChart
-              category={data.category}
-              destination={data.destination}
-              series={data.topConsumedDaily}
-            />
-            <PeriodComparisonChart
-              series={data.periodComparison}
-              category={data.category}
-              destination={data.destination}
-            />
-          </div>
-
           <ItemUsageCompareChart
             options={data.inventoryOptions}
             selectedIds={compareItemIds}
@@ -194,13 +176,6 @@ export function AnalyticsPageClient() {
           />
         </>
       )}
-
-      <AdminDailyStockSection
-        date={selectedDate}
-        onDateChange={setSelectedDate}
-        destination={destination}
-        category={category || undefined}
-      />
 
       {!loading && data && <UserActivityChart data={data.userActivity} />}
     </div>
