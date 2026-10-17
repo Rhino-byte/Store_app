@@ -87,26 +87,32 @@ export function StockMovementForm({ type }: StockMovementFormProps) {
   const queuedForSelected = selectedItem
     ? queuedQuantityForItem(lines, selectedItem.itemId)
     : 0;
-  const quantityError = quantity.trim()
+  const itemError = addAttempted && !selectedItem ? SELECT_ITEM_MESSAGE : undefined;
+  const quantityReadyToCheck = Boolean(selectedItem) && (quantity.trim() !== "" || addAttempted);
+  const quantityError = quantityReadyToCheck
     ? movementQuantityError(quantityValue)
-    : addAttempted
-      ? movementQuantityError(quantityValue)
-      : null;
+    : null;
   const stockError =
     type === "out" &&
     selectedItem &&
+    quantityReadyToCheck &&
     !quantityError &&
     quantity.trim() !== "" &&
     Number.isFinite(quantityValue) &&
     queuedForSelected + quantityValue > selectedItem.closingStock
       ? insufficientStockMessage(selectedItem, queuedForSelected + quantityValue)
       : null;
-  const itemError = addAttempted && !selectedItem ? SELECT_ITEM_MESSAGE : undefined;
+  const shownQuantityError = itemError
+    ? undefined
+    : (quantityError ?? stockError ?? undefined);
   const destinationError =
-    type === "out" && addAttempted && !isStockDestination(destination)
+    type === "out" &&
+    addAttempted &&
+    !itemError &&
+    !shownQuantityError &&
+    !isStockDestination(destination)
       ? CHOOSE_DESTINATION_MESSAGE
       : undefined;
-  const shownQuantityError = quantityError ?? stockError ?? undefined;
   const unitLabel = selectedItem?.unit.trim() || "units";
   const canSave = !locked && lines.length > 0;
 
@@ -133,10 +139,7 @@ export function StockMovementForm({ type }: StockMovementFormProps) {
       destination,
       alreadyQueued: queuedForSelected,
     });
-    if (error || !selectedItem) {
-      reportError(error ?? SELECT_ITEM_MESSAGE);
-      return;
-    }
+    if (error || !selectedItem) return;
 
     const nextDestination =
       type === "out" && isStockDestination(destination) ? destination : undefined;
