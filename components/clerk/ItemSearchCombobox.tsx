@@ -96,6 +96,9 @@ export function ItemSearchCombobox({
     if (event.key === "Escape") {
       closeList();
     }
+    if (event.key === "Enter") {
+      event.preventDefault();
+    }
   }
 
   return (

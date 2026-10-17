@@ -36,6 +36,20 @@ export interface StockMovementRequest {
   destination?: StockDestination;
 }
 
+/** One line in a stock-in or stock-out list. Destination is required for stock-out. */
+export interface StockMovementLine {
+  itemId: string;
+  quantity: number;
+  destination?: StockDestination;
+}
+
+/** Several lines saved together. Notes are copied onto every line. */
+export interface StockMovementBatchRequest {
+  type: StockMovementType;
+  notes?: string;
+  lines: StockMovementLine[];
+}
+
 export interface Transaction {
   timestamp: string;
   itemId: string;

@@ -410,7 +410,8 @@ export async function revertStockMovement(
   };
 }
 
-export async function appendTransaction(transaction: Transaction): Promise<void> {
+export async function appendTransactions(transactions: Transaction[]): Promise<void> {
+  if (transactions.length === 0) return;
   await ensureAuxiliarySheets();
   const sheets = getSheetsClient();
 
@@ -420,20 +421,22 @@ export async function appendTransaction(transaction: Transaction): Promise<void>
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
-      values: [
-        [
-          transaction.timestamp,
-          transaction.itemId,
-          transaction.itemName,
-          transaction.type,
-          transaction.quantity,
-          transaction.userEmail,
-          transaction.notes,
-          transaction.destination,
-        ],
-      ],
+      values: transactions.map((transaction) => [
+        transaction.timestamp,
+        transaction.itemId,
+        transaction.itemName,
+        transaction.type,
+        transaction.quantity,
+        transaction.userEmail,
+        transaction.notes,
+        transaction.destination,
+      ]),
     },
   });
+}
+
+export async function appendTransaction(transaction: Transaction): Promise<void> {
+  await appendTransactions([transaction]);
 }
 
 export async function getTransactions(): Promise<Transaction[]> {

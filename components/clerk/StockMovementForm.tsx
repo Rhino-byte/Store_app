@@ -6,26 +6,45 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ItemSearchCombobox } from "@/components/clerk/ItemSearchCombobox";
 import { fetchInventory, submitStockMovement } from "@/lib/api-client";
 import { formatNumber } from "@/lib/utils";
 import {
   CHOOSE_DESTINATION_MESSAGE,
+  EMPTY_STOCK_LIST_MESSAGE,
   SELECT_ITEM_MESSAGE,
   STOCK_LOG_FAILED_SHEET_UPDATED,
   StockMovementError,
   insufficientStockMessage,
   isStockDestination,
+  mergeStockLine,
   movementQuantityError,
+  queuedQuantityForItem,
+  validatePendingLine,
 } from "@/lib/stock";
 import {
   STOCK_DESTINATIONS,
   type InventoryItem,
   type StockDestination,
+  type StockMovementLine,
 } from "@/lib/types";
 
 interface StockMovementFormProps {
   type: "in" | "out";
+}
+
+interface PendingLine extends StockMovementLine {
+  itemName: string;
+  unit: string;
+  destination?: StockDestination;
 }
 
 function FieldError({ id, message }: { id: string; message?: string }) {
@@ -37,12 +56,17 @@ function FieldError({ id, message }: { id: string; message?: string }) {
   );
 }
 
+function lineKey(line: { itemId: string; destination?: string }) {
+  return `${line.itemId}:${line.destination ?? ""}`;
+}
+
 export function StockMovementForm({ type }: StockMovementFormProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [lines, setLines] = useState<PendingLine[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [locked, setLocked] = useState(false);
-  const [attempted, setAttempted] = useState(false);
+  const [addAttempted, setAddAttempted] = useState(false);
   const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [notes, setNotes] = useState("");
@@ -60,95 +84,122 @@ export function StockMovementForm({ type }: StockMovementFormProps) {
 
   const selectedItem = items.find((item) => item.itemId === itemId);
   const quantityValue = Number(quantity);
+  const queuedForSelected = selectedItem
+    ? queuedQuantityForItem(lines, selectedItem.itemId)
+    : 0;
   const quantityError = quantity.trim()
     ? movementQuantityError(quantityValue)
-    : attempted
+    : addAttempted
       ? movementQuantityError(quantityValue)
       : null;
   const stockError =
     type === "out" &&
     selectedItem &&
     !quantityError &&
+    quantity.trim() !== "" &&
     Number.isFinite(quantityValue) &&
-    quantityValue > selectedItem.closingStock
-      ? insufficientStockMessage(selectedItem, quantityValue)
+    queuedForSelected + quantityValue > selectedItem.closingStock
+      ? insufficientStockMessage(selectedItem, queuedForSelected + quantityValue)
       : null;
-  const itemError = attempted && !selectedItem ? SELECT_ITEM_MESSAGE : undefined;
+  const itemError = addAttempted && !selectedItem ? SELECT_ITEM_MESSAGE : undefined;
   const destinationError =
-    type === "out" && !destination ? CHOOSE_DESTINATION_MESSAGE : undefined;
+    type === "out" && addAttempted && !isStockDestination(destination)
+      ? CHOOSE_DESTINATION_MESSAGE
+      : undefined;
   const shownQuantityError = quantityError ?? stockError ?? undefined;
   const unitLabel = selectedItem?.unit.trim() || "units";
-  const destinationReady = type === "in" || isStockDestination(destination);
-  const canSubmit =
-    !locked &&
-    Boolean(selectedItem) &&
-    !quantityError &&
-    !stockError &&
-    quantity.trim() !== "" &&
-    destinationReady;
-
-  const confirmation =
-    selectedItem && canSubmit
-      ? type === "in"
-        ? `Add ${formatNumber(quantityValue)} ${unitLabel} of ${selectedItem.itemName}.`
-        : `Remove ${formatNumber(quantityValue)} ${unitLabel} of ${selectedItem.itemName}, going to ${destination}.`
-      : "";
+  const canSave = !locked && lines.length > 0;
 
   function reportError(message: string) {
     setFormError(message);
     toast.error(message);
   }
 
+  function addOnEnter(event: React.KeyboardEvent) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    handleAdd();
+  }
+
+  function handleAdd() {
+    if (locked || submitting) return;
+    setAddAttempted(true);
+    setFormError("");
+
+    const error = validatePendingLine({
+      item: selectedItem,
+      type,
+      quantity: quantityValue,
+      destination,
+      alreadyQueued: queuedForSelected,
+    });
+    if (error || !selectedItem) {
+      reportError(error ?? SELECT_ITEM_MESSAGE);
+      return;
+    }
+
+    const nextDestination =
+      type === "out" && isStockDestination(destination) ? destination : undefined;
+    setLines((current) =>
+      mergeStockLine(current, {
+        itemId: selectedItem.itemId,
+        itemName: selectedItem.itemName,
+        unit: selectedItem.unit,
+        quantity: quantityValue,
+        destination: nextDestination,
+      })
+    );
+    setItemId("");
+    setQuantity("");
+    setDestination("");
+    setAddAttempted(false);
+    setFormError("");
+  }
+
+  function removeLine(line: PendingLine) {
+    const key = lineKey(line);
+    setLines((current) => current.filter((entry) => lineKey(entry) !== key));
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (locked || submitting) return;
-    setAttempted(true);
     setFormError("");
 
-    if (!selectedItem) {
-      reportError(SELECT_ITEM_MESSAGE);
-      return;
-    }
-    const qtyError = movementQuantityError(quantityValue);
-    if (qtyError) {
-      reportError(qtyError);
-      return;
-    }
-    if (type === "out" && stockError) {
-      reportError(stockError);
-      return;
-    }
-    if (type === "out" && !isStockDestination(destination)) {
-      reportError(CHOOSE_DESTINATION_MESSAGE);
+    if (lines.length === 0) {
+      reportError(EMPTY_STOCK_LIST_MESSAGE);
       return;
     }
 
     setSubmitting(true);
     try {
       const result = await submitStockMovement({
-        itemId,
         type,
-        quantity: quantityValue,
         notes,
-        ...(type === "out" && isStockDestination(destination)
-          ? { destination }
-          : {}),
+        lines: lines.map((line) => ({
+          itemId: line.itemId,
+          quantity: line.quantity,
+          ...(line.destination ? { destination: line.destination } : {}),
+        })),
       });
-      const savedName = result.item?.itemName ?? selectedItem.itemName;
+      const savedCount = lines.length;
       toast.success(
-        `${type === "in" ? "Stock in" : "Stock out"} recorded for ${savedName}.`
+        `${type === "in" ? "Stock in" : "Stock out"} recorded for ${savedCount} ${
+          savedCount === 1 ? "item" : "items"
+        }.`
       );
-      if (result.item) {
+      if (result.items?.length) {
+        const updated = new Map(result.items.map((item) => [item.itemId, item]));
         setItems((current) =>
-          current.map((item) =>
-            item.itemId === result.item?.itemId ? result.item! : item
-          )
+          current.map((item) => updated.get(item.itemId) ?? item)
         );
       }
+      setLines([]);
       setQuantity("");
       setNotes("");
       setDestination("");
-      setAttempted(false);
+      setItemId("");
+      setAddAttempted(false);
       setFormError("");
     } catch (error) {
       const movementError =
@@ -160,10 +211,11 @@ export function StockMovementForm({ type }: StockMovementFormProps) {
       reportError(movementError.message);
       if (movementError.code === STOCK_LOG_FAILED_SHEET_UPDATED) {
         setLocked(true);
+        setLines([]);
         try {
           setItems(await fetchInventory());
         } catch {
-          // The warning already tells them not to enter this quantity again.
+          // The warning already tells them not to enter these quantities again.
         }
       }
     } finally {
@@ -177,8 +229,8 @@ export function StockMovementForm({ type }: StockMovementFormProps) {
         <CardTitle>{type === "in" ? "Record Stock In" : "Record Stock Out"}</CardTitle>
         <CardDescription>
           {type === "in"
-            ? "Add received stock to the inventory."
-            : "Choose where the stock is going before removing it from the store."}
+            ? "Add received items to the list, then save them together."
+            : "Add each item and where it is going, then remove them from the store together."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -205,6 +257,12 @@ export function StockMovementForm({ type }: StockMovementFormProps) {
               <span className="font-semibold text-slate-900">
                 {formatNumber(selectedItem.closingStock)} {unitLabel}
               </span>
+              {queuedForSelected > 0 ? (
+                <span>
+                  {" "}
+                  ({formatNumber(queuedForSelected)} {unitLabel} already in this list)
+                </span>
+              ) : null}
             </div>
           )}
 
@@ -218,10 +276,10 @@ export function StockMovementForm({ type }: StockMovementFormProps) {
                 step="any"
                 value={quantity}
                 onChange={(event) => setQuantity(event.target.value)}
+                onKeyDown={addOnEnter}
                 aria-invalid={Boolean(shownQuantityError)}
                 aria-describedby={shownQuantityError ? "quantity-error" : undefined}
                 disabled={locked}
-                required
               />
               {selectedItem?.unit ? (
                 <span className="shrink-0 text-sm text-slate-600">{selectedItem.unit}</span>
@@ -240,6 +298,7 @@ export function StockMovementForm({ type }: StockMovementFormProps) {
                   const next = event.target.value;
                   setDestination(isStockDestination(next) ? next : "");
                 }}
+                onKeyDown={addOnEnter}
                 aria-invalid={Boolean(destinationError)}
                 aria-describedby={destinationError ? "destination-error" : undefined}
                 disabled={locked}
@@ -256,6 +315,71 @@ export function StockMovementForm({ type }: StockMovementFormProps) {
             </div>
           )}
 
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full"
+            onClick={handleAdd}
+            disabled={locked || loading || submitting}
+          >
+            Add to list
+          </Button>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-slate-700">
+              {type === "in" ? "Items to add" : "Items to remove"}
+            </p>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  {type === "out" ? <TableHead>Destination</TableHead> : null}
+                  <TableHead>Quantity</TableHead>
+                  <TableHead className="w-24 text-right">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lines.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={type === "out" ? 4 : 3}
+                      className="text-slate-500"
+                    >
+                      No items added yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  lines.map((line) => (
+                    <TableRow key={lineKey(line)}>
+                      <TableCell className="font-medium text-slate-900">
+                        {line.itemName}
+                      </TableCell>
+                      {type === "out" ? (
+                        <TableCell>{line.destination}</TableCell>
+                      ) : null}
+                      <TableCell>
+                        {formatNumber(line.quantity)} {line.unit.trim() || "units"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeLine(line)}
+                          disabled={locked || submitting}
+                        >
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="notes">Notes (optional)</Label>
             <Input
@@ -267,16 +391,10 @@ export function StockMovementForm({ type }: StockMovementFormProps) {
             />
           </div>
 
-          {confirmation ? (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
-              {confirmation}
-            </p>
-          ) : null}
-
           <Button
             type="submit"
             className="w-full"
-            disabled={!canSubmit || submitting || loading}
+            disabled={!canSave || submitting || loading}
           >
             {submitting ? "Saving..." : type === "in" ? "Add Stock" : "Remove Stock"}
           </Button>

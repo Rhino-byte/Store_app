@@ -13,6 +13,7 @@ export const STOCK_NETWORK_MESSAGE =
 
 export const STOCK_LOG_ROLLED_BACK = "LOG_FAILED_ROLLED_BACK";
 export const STOCK_LOG_FAILED_SHEET_UPDATED = "LOG_FAILED_SHEET_UPDATED";
+export const EMPTY_STOCK_LIST_MESSAGE = "Add at least one item before saving.";
 
 export function destinationNotAllowedMessage(): string {
   return `That destination is not allowed. Use ${STOCK_DESTINATIONS.join(", ")}.`;
@@ -20,6 +21,14 @@ export function destinationNotAllowedMessage(): string {
 
 export function stockLogFailedSheetMessage(itemName: string): string {
   return `${itemName} was updated on the item sheet, but the movement was not saved in the log. Do not enter it again.`;
+}
+
+export function stockLogFailedItemsMessage(itemNames: string[]): string {
+  const names = [...new Set(itemNames.filter((name) => name.trim()))];
+  if (names.length <= 1) {
+    return stockLogFailedSheetMessage(names[0] ?? "An item");
+  }
+  return `${names.join(", ")} were updated on the item sheet, but the movements were not saved in the log. Do not enter them again.`;
 }
 
 export function isStockDestination(value: unknown): value is StockDestination {
@@ -137,6 +146,96 @@ export function validateStockMovement(
 
   if (type === "out" && quantity > item.closingStock) {
     return insufficientStockMessage(item, quantity);
+  }
+
+  return null;
+}
+
+export interface StockLineInput {
+  itemId: string;
+  quantity: number;
+  destination?: unknown;
+}
+
+export interface DraftStockLine {
+  itemId: string;
+  quantity: number;
+  destination?: StockDestination;
+}
+
+/** Same item and destination become one row. Stock-in lines match on item only. */
+export function mergeStockLine<T extends DraftStockLine>(lines: T[], next: T): T[] {
+  const destination = next.destination ?? "";
+  const index = lines.findIndex(
+    (line) => line.itemId === next.itemId && (line.destination ?? "") === destination
+  );
+  if (index === -1) return [...lines, next];
+  const merged = lines.slice();
+  merged[index] = {
+    ...merged[index],
+    quantity: merged[index].quantity + next.quantity,
+  };
+  return merged;
+}
+
+export function queuedQuantityForItem(
+  lines: Array<{ itemId: string; quantity: number }>,
+  itemId: string
+): number {
+  return lines.reduce(
+    (sum, line) => (line.itemId === itemId ? sum + line.quantity : sum),
+    0
+  );
+}
+
+/** Check one new line against stock already waiting in the temporary list. */
+export function validatePendingLine(input: {
+  item: InventoryItem | undefined;
+  type: "in" | "out";
+  quantity: number;
+  destination?: unknown;
+  alreadyQueued: number;
+}): string | null {
+  if (!input.item) return SELECT_ITEM_MESSAGE;
+  const quantityError = movementQuantityError(input.quantity);
+  if (quantityError) return quantityError;
+  if (input.type === "out") {
+    const destinationError = stockDestinationError(input.destination);
+    if (destinationError) return destinationError;
+    const total = input.alreadyQueued + input.quantity;
+    if (total > input.item.closingStock) {
+      return insufficientStockMessage(input.item, total);
+    }
+  }
+  return null;
+}
+
+/** Check a whole list before any sheet write. Stock-out totals are per item. */
+export function validateStockBatch(
+  inventory: InventoryItem[],
+  type: "in" | "out",
+  lines: StockLineInput[]
+): string | null {
+  if (lines.length === 0) return EMPTY_STOCK_LIST_MESSAGE;
+
+  const byId = new Map(inventory.map((item) => [item.itemId, item]));
+  const queued = new Map<string, number>();
+
+  for (const line of lines) {
+    if (!line.itemId?.trim()) return SELECT_ITEM_MESSAGE;
+    const item = byId.get(line.itemId);
+    if (!item) return ITEM_NOT_FOUND_MESSAGE;
+    const quantityError = movementQuantityError(line.quantity);
+    if (quantityError) return quantityError;
+    if (type === "out") {
+      const destinationError = stockDestinationError(line.destination);
+      if (destinationError) return destinationError;
+    }
+    const total = (queued.get(line.itemId) ?? 0) + line.quantity;
+    if (type === "out" && total > item.closingStock) {
+      return insufficientStockMessage(item, total);
+    }
+    queued.set(line.itemId, total);
   }
 
   return null;

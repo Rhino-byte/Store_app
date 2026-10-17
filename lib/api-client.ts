@@ -12,6 +12,8 @@ import type {
   DashboardStats,
   InventoryItem,
   StockDestination,
+  StockMovementLine,
+  StockMovementType,
 } from "@/lib/types";
 import { getFirebaseAuthHeader } from "@/lib/auth/use-firebase-auth";
 import {
@@ -47,13 +49,21 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
   return data.items;
 }
 
-export async function submitStockMovement(payload: {
-  itemId: string;
-  type: "in" | "out";
-  quantity: number;
-  notes?: string;
-  destination?: StockDestination;
-}) {
+export async function submitStockMovement(
+  payload:
+    | {
+        itemId: string;
+        type: StockMovementType;
+        quantity: number;
+        notes?: string;
+        destination?: StockDestination;
+      }
+    | {
+        type: StockMovementType;
+        notes?: string;
+        lines: StockMovementLine[];
+      }
+) {
   const headers = await getFirebaseAuthHeader();
   let response: Response;
   try {
@@ -70,6 +80,7 @@ export async function submitStockMovement(payload: {
     error?: string;
     code?: string;
     item?: InventoryItem;
+    items?: InventoryItem[];
     alertSent?: boolean;
   };
   try {
