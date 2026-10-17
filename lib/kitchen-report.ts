@@ -1,4 +1,5 @@
 import { transactionDateKey } from "@/lib/dates";
+import { closingStockAsOf, type DatedStockMovement } from "@/lib/reports";
 import type { InventoryItem, StockCorrection, Transaction } from "@/lib/types";
 
 export type KitchenPriorityItem = {
@@ -153,8 +154,6 @@ export function seedKitchenReportItemIds(items: InventoryItem[]): string[] {
 type KitchenMovement = {
   stockIn: number;
   stockOut: number;
-  throughIn: number;
-  throughOut: number;
   destinations: Set<string>;
 };
 
@@ -162,8 +161,6 @@ function emptyMovement(): KitchenMovement {
   return {
     stockIn: 0,
     stockOut: 0,
-    throughIn: 0,
-    throughOut: 0,
     destinations: new Set<string>(),
   };
 }
@@ -177,23 +174,18 @@ function applyKitchenQuantity(
     quantity: number;
     destination?: string;
   },
-  dateKey: string,
-  includeInDayTotals: boolean
+  dateKey: string
 ) {
   const day = transactionDateKey(entry.timestamp);
-  if (!day || !entry.itemId || day > dateKey) return;
+  if (!day || !entry.itemId || day !== dateKey) return;
 
   const current = byItemId.get(entry.itemId) ?? emptyMovement();
   if (entry.type === "in") {
-    current.throughIn += entry.quantity;
-    if (includeInDayTotals && day === dateKey) current.stockIn += entry.quantity;
+    current.stockIn += entry.quantity;
   } else {
-    current.throughOut += entry.quantity;
-    if (includeInDayTotals && day === dateKey) {
-      current.stockOut += entry.quantity;
-      const dest = entry.destination?.trim();
-      if (dest) current.destinations.add(dest);
-    }
+    current.stockOut += entry.quantity;
+    const dest = entry.destination?.trim();
+    if (dest) current.destinations.add(dest);
   }
   byItemId.set(entry.itemId, current);
 }
@@ -207,6 +199,20 @@ export function buildKitchenDailyReport(
 ): KitchenDailyRow[] {
   const inventoryById = new Map(items.map((item) => [item.itemId, item]));
   const byItemId = new Map<string, KitchenMovement>();
+  const movements: DatedStockMovement[] = [
+    ...transactions.map((tx) => ({
+      timestamp: tx.timestamp,
+      itemId: tx.itemId,
+      type: tx.type,
+      quantity: tx.quantity,
+    })),
+    ...corrections.map((corr) => ({
+      timestamp: corr.timestamp,
+      itemId: corr.itemId,
+      type: corr.type,
+      quantity: corr.quantity,
+    })),
+  ];
 
   for (const tx of transactions) {
     applyKitchenQuantity(
@@ -218,22 +224,7 @@ export function buildKitchenDailyReport(
         quantity: tx.quantity,
         destination: tx.destination,
       },
-      dateKey,
-      true
-    );
-  }
-
-  for (const corr of corrections) {
-    applyKitchenQuantity(
-      byItemId,
-      {
-        timestamp: corr.timestamp,
-        itemId: corr.itemId,
-        type: corr.type,
-        quantity: corr.quantity,
-      },
-      dateKey,
-      false
+      dateKey
     );
   }
 
@@ -266,10 +257,12 @@ export function buildKitchenDailyReport(
       itemName: item.itemName,
       stockIn: movement?.stockIn ?? 0,
       stockOut,
-      closingStock:
-        item.openingStock +
-        (movement?.throughIn ?? 0) -
-        (movement?.throughOut ?? 0),
+      closingStock: closingStockAsOf(
+        item.closingStock,
+        movements,
+        item.itemId,
+        dateKey
+      ),
       destination: movement
         ? Array.from(movement.destinations).sort().join(", ")
         : "",

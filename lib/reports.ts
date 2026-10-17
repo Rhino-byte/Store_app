@@ -1,5 +1,6 @@
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import {
+  addCalendarDays,
   isDateKeyInRange,
   rollingDateRange,
   todayDateKey,
@@ -202,13 +203,51 @@ export function reportDestinationTotals(
     .sort((a, b) => b.quantity - a.quantity);
 }
 
+export type DatedStockMovement = {
+  timestamp: string;
+  itemId: string;
+  type: "in" | "out";
+  quantity: number;
+};
+
+/** Ins and outs whose calendar day is strictly after dateKey. Blank timestamps are ignored. */
+export function movementsAfterDate(
+  entries: DatedStockMovement[],
+  itemId: string,
+  dateKey: string
+): { stockIn: number; stockOut: number } {
+  let stockIn = 0;
+  let stockOut = 0;
+  for (const entry of entries) {
+    if (entry.itemId !== itemId) continue;
+    const day = transactionDateKey(entry.timestamp);
+    if (!day || day <= dateKey) continue;
+    if (entry.type === "in") stockIn += entry.quantity;
+    else if (entry.type === "out") stockOut += entry.quantity;
+  }
+  return { stockIn, stockOut };
+}
+
 /**
- * Period stock balance:
- * Opening = sheet.openingStock + (tx + correction) ins before from
- *           − (tx + correction) outs before from
+ * Sheet closing, with movements dated after dateKey removed.
+ * When nothing is dated after dateKey this equals the Items sheet closing.
+ */
+export function closingStockAsOf(
+  closingStock: number,
+  entries: DatedStockMovement[],
+  itemId: string,
+  dateKey: string
+): number {
+  const after = movementsAfterDate(entries, itemId, dateKey);
+  return closingStock - after.stockIn + after.stockOut;
+}
+
+/**
+ * Period stock balance, anchored to the Items sheet closing:
+ * Closing = sheet.closingStock − ins after `to` + outs after `to`
+ * Opening = the same figure for the day before `from`
  * Stock In/Out = (tx + correction) sums in [from, to]
  * Total = Opening + Stock In
- * Closing = Total - Stock Out
  *
  * Rows follow inventory sheet order (Item ID / row position).
  */
@@ -219,10 +258,8 @@ export function reportStockBalanceRows(
   toKey: string,
   corrections: StockCorrection[] = []
 ): ReportStockBalanceRow[] {
-  type Movement = { timestamp: string; itemId: string; type: "in" | "out"; quantity: number };
-
-  const byItem = new Map<string, Movement[]>();
-  function pushMovement(entry: Movement) {
+  const byItem = new Map<string, DatedStockMovement[]>();
+  function pushMovement(entry: DatedStockMovement) {
     if (!entry.timestamp || !entry.itemId) return;
     const list = byItem.get(entry.itemId) ?? [];
     list.push(entry);
@@ -246,28 +283,33 @@ export function reportStockBalanceRows(
     });
   }
 
+  const openingAsOf = addCalendarDays(fromKey, -1);
+
   return items.map((item) => {
     const txs = byItem.get(item.itemId) ?? [];
-    let priorIn = 0;
-    let priorOut = 0;
     let periodIn = 0;
     let periodOut = 0;
 
     for (const tx of txs) {
       const day = transactionDateKey(tx.timestamp);
-      if (!day) continue;
-      if (day < fromKey) {
-        if (tx.type === "in") priorIn += tx.quantity;
-        else if (tx.type === "out") priorOut += tx.quantity;
-      } else if (day <= toKey) {
-        if (tx.type === "in") periodIn += tx.quantity;
-        else if (tx.type === "out") periodOut += tx.quantity;
-      }
+      if (!day || day < fromKey || day > toKey) continue;
+      if (tx.type === "in") periodIn += tx.quantity;
+      else if (tx.type === "out") periodOut += tx.quantity;
     }
 
-    const opening = item.openingStock + priorIn - priorOut;
+    const opening = closingStockAsOf(
+      item.closingStock,
+      txs,
+      item.itemId,
+      openingAsOf
+    );
+    const closing = closingStockAsOf(
+      item.closingStock,
+      txs,
+      item.itemId,
+      toKey
+    );
     const total = opening + periodIn;
-    const closing = total - periodOut;
 
     return {
       itemId: item.itemId,
