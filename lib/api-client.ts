@@ -14,6 +14,13 @@ import type {
   StockDestination,
 } from "@/lib/types";
 import { getFirebaseAuthHeader } from "@/lib/auth/use-firebase-auth";
+import {
+  STOCK_NETWORK_MESSAGE,
+  STOCK_SAVE_ROLLED_BACK_MESSAGE,
+  StockMovementError,
+} from "@/lib/stock";
+
+export { StockMovementError };
 
 export type AnalyticsPayload = {
   stats: DashboardStats;
@@ -48,14 +55,36 @@ export async function submitStockMovement(payload: {
   destination?: StockDestination;
 }) {
   const headers = await getFirebaseAuthHeader();
-  const response = await fetch("/api/stock", {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json();
+  let response: Response;
+  try {
+    response = await fetch("/api/stock", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new StockMovementError(STOCK_NETWORK_MESSAGE);
+  }
+
+  let data: {
+    error?: string;
+    code?: string;
+    item?: InventoryItem;
+    alertSent?: boolean;
+  };
+  try {
+    data = await response.json();
+  } catch {
+    throw new StockMovementError(
+      response.ok ? "Failed to update stock" : STOCK_NETWORK_MESSAGE
+    );
+  }
+
   if (!response.ok) {
-    throw new Error(data.error ?? "Failed to update stock");
+    throw new StockMovementError(
+      data.error ?? STOCK_SAVE_ROLLED_BACK_MESSAGE,
+      data.code
+    );
   }
   return data;
 }

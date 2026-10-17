@@ -376,6 +376,40 @@ export async function updateStockMovement(
   };
 }
 
+/** Undo one updateStockMovement by subtracting the same quantity from the same column. */
+export async function revertStockMovement(
+  item: InventoryItem,
+  type: "in" | "out",
+  quantity: number
+): Promise<InventoryItem> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+
+  const stockIn = type === "in" ? item.stockIn - quantity : item.stockIn;
+  const stockOut = type === "out" ? item.stockOut - quantity : item.stockOut;
+  const closingStock = calculateClosingStock(
+    item.openingStock,
+    stockIn,
+    stockOut
+  );
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${INVENTORY_SHEET}!F${item.rowIndex}:H${item.rowIndex}`,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [[stockIn, stockOut, closingStock]],
+    },
+  });
+
+  return {
+    ...item,
+    stockIn,
+    stockOut,
+    closingStock,
+  };
+}
+
 export async function appendTransaction(transaction: Transaction): Promise<void> {
   await ensureAuxiliarySheets();
   const sheets = getSheetsClient();

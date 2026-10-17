@@ -33,20 +33,10 @@ export function ItemSearchCombobox({
     return items.filter(
       (item) =>
         item.itemName.toLowerCase().includes(normalized) ||
-        item.category.toLowerCase().includes(normalized)
+        item.category.toLowerCase().includes(normalized) ||
+        item.unit.toLowerCase().includes(normalized)
     );
   }, [items, query]);
-
-  useEffect(() => {
-    function handlePointerDown(event: MouseEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, []);
 
   useEffect(() => {
     if (!value) return;
@@ -57,6 +47,22 @@ export function ItemSearchCombobox({
     }
   }, [items, value, onChange]);
 
+  function closeList() {
+    setOpen(false);
+    setQuery("");
+  }
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        closeList();
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
   const displayValue = open ? query : selectedItem?.itemName ?? query;
 
   function handleFocus() {
@@ -64,7 +70,6 @@ export function ItemSearchCombobox({
     setOpen(true);
     if (selectedItem) {
       setQuery(selectedItem.itemName);
-      onChange("");
     }
   }
 
@@ -72,7 +77,11 @@ export function ItemSearchCombobox({
     const nextQuery = event.target.value;
     setQuery(nextQuery);
     setOpen(true);
-    if (value) {
+    if (!nextQuery.trim()) {
+      onChange("");
+      return;
+    }
+    if (value && nextQuery !== selectedItem?.itemName) {
       onChange("");
     }
   }
@@ -85,10 +94,7 @@ export function ItemSearchCombobox({
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
-      setOpen(false);
-      if (selectedItem) {
-        setQuery("");
-      }
+      closeList();
     }
   }
 
@@ -131,8 +137,10 @@ export function ItemSearchCombobox({
                     onClick={() => handleSelect(item)}
                   >
                     <span className="font-medium text-slate-900">{item.itemName}</span>
-                    {item.category ? (
-                      <span className="text-xs text-slate-500">{item.category}</span>
+                    {item.unit || item.category ? (
+                      <span className="text-xs text-slate-500">
+                        {[item.unit, item.category].filter(Boolean).join(" · ")}
+                      </span>
                     ) : null}
                   </button>
                 </li>
