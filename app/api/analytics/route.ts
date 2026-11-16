@@ -13,8 +13,7 @@ import {
   userActivityByDay,
 } from "@/lib/analytics";
 import { requireAdmin } from "@/lib/auth/api-auth";
-import { resolveReportRange } from "@/lib/reports";
-import { rollingDateRange } from "@/lib/dates";
+import { resolveCustomDateRange, rollingDateRange } from "@/lib/dates";
 import { getInventoryItems, getTransactions } from "@/lib/sheets";
 import { isLowStock } from "@/lib/stock";
 import { STOCK_DESTINATIONS } from "@/lib/types";
@@ -30,11 +29,7 @@ export async function GET(request: Request) {
     let from: string;
     let to: string;
     if (fromParam && toParam) {
-      const resolved = resolveReportRange({
-        period: "custom",
-        from: fromParam,
-        to: toParam,
-      });
+      const resolved = resolveCustomDateRange(fromParam, toParam);
       if ("error" in resolved) {
         return NextResponse.json({ error: resolved.error }, { status: 400 });
       }
