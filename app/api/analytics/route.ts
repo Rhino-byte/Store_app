@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import {
   buildDashboardStats,
   destinationBreakdown,
+  destinationIssues,
   dailyInOutMovement,
+  stockInReceipts,
   filterTransactionsByDays,
   inventoryOptions,
   itemOutMatrix,
@@ -11,6 +13,8 @@ import {
   userActivityByDay,
 } from "@/lib/analytics";
 import { requireAdmin } from "@/lib/auth/api-auth";
+import { resolveReportRange } from "@/lib/reports";
+import { rollingDateRange } from "@/lib/dates";
 import { getInventoryItems, getTransactions } from "@/lib/sheets";
 import { isLowStock } from "@/lib/stock";
 import { STOCK_DESTINATIONS } from "@/lib/types";
@@ -20,6 +24,29 @@ export async function GET(request: Request) {
     await requireAdmin(request);
     const { searchParams } = new URL(request.url);
     const days = Number(searchParams.get("days") ?? 30);
+    const fromParam = searchParams.get("from")?.trim() ?? "";
+    const toParam = searchParams.get("to")?.trim() ?? "";
+
+    let from: string;
+    let to: string;
+    if (fromParam && toParam) {
+      const resolved = resolveReportRange({
+        period: "custom",
+        from: fromParam,
+        to: toParam,
+      });
+      if ("error" in resolved) {
+        return NextResponse.json({ error: resolved.error }, { status: 400 });
+      }
+      from = resolved.from;
+      to = resolved.to;
+    } else {
+      const span = days <= 0 ? 1 : days;
+      const rolling = rollingDateRange(span);
+      from = rolling.from;
+      to = rolling.to;
+    }
+    const range = { from, to };
 
     const [items, transactions] = await Promise.all([
       getInventoryItems(),
@@ -40,7 +67,7 @@ export async function GET(request: Request) {
         ? destinationParam
         : "all";
 
-    const filtered = filterTransactionsByDays(transactions, days);
+    const filtered = filterTransactionsByDays(transactions, days, range);
 
     return NextResponse.json({
       stats: buildDashboardStats(items, transactions),
@@ -50,22 +77,36 @@ export async function GET(request: Request) {
       destinations: ["all", ...STOCK_DESTINATIONS],
       category,
       destination,
-      inventoryOptions: inventoryOptions(items),
+      from,
+      to,
+      inventoryOptions: inventoryOptions(items, category),
       dailyMovement: dailyInOutMovement(transactions, items, days, {
         category,
         destination,
+        ...range,
+      }),
+      stockInReceipts: stockInReceipts(transactions, items, days, {
+        category,
+        ...range,
       }),
       destinationTotals: destinationBreakdown(transactions, items, days, {
         category,
+        ...range,
+      }),
+      destinationIssues: destinationIssues(transactions, items, days, {
+        category,
+        ...range,
       }),
       itemOuts: itemOutMatrix(transactions, items, days, {
         category,
         destination,
+        ...range,
       }),
       userActivity: userActivityByDay(filtered, days, {
         category,
         destination,
         items,
+        ...range,
       }),
     });
   } catch (error) {

@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth/api-auth";
 import {
   filterTransactionsByDateRange,
   reportCorrectionsSummary,
+  reportDestinationIssues,
   reportDestinationTotals,
   reportStockBalanceRows,
   reportStockInTotals,
@@ -71,6 +72,7 @@ export async function GET(request: Request) {
         corrections
       ),
       destinationTotals: reportDestinationTotals(filtered),
+      destinationIssues: reportDestinationIssues(filtered),
       correctionsSummary: reportCorrectionsSummary(
         corrections,
         range.from,
