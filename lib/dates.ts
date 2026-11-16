@@ -96,3 +96,39 @@ export function isDateKeyInRange(
 ): boolean {
   return !!dateKey && dateKey >= fromKey && dateKey <= toKey;
 }
+
+export function isValidDateKey(value: string): boolean {
+  if (!DATE_RE.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(year, month - 1, day);
+  return (
+    parsed.getFullYear() === year &&
+    parsed.getMonth() === month - 1 &&
+    parsed.getDate() === day
+  );
+}
+
+const MAX_CUSTOM_RANGE_DAYS = 366 * 2;
+
+/** Inclusive custom calendar range, or an error string. */
+export function resolveCustomDateRange(
+  fromInput?: string | null,
+  toInput?: string | null
+): { from: string; to: string } | { error: string } {
+  const from = fromInput?.trim() ?? "";
+  const to = toInput?.trim() ?? "";
+  if (!from || !to) {
+    return { error: "Custom period requires from and to dates (YYYY-MM-DD)." };
+  }
+  if (!isValidDateKey(from) || !isValidDateKey(to)) {
+    return { error: "Invalid date. Use YYYY-MM-DD." };
+  }
+  if (from > to) {
+    return { error: "From date must be on or before the to date." };
+  }
+  const span = dateKeysInclusive(from, to).length;
+  if (span > MAX_CUSTOM_RANGE_DAYS) {
+    return { error: "Custom range cannot exceed 2 years." };
+  }
+  return { from, to };
+}

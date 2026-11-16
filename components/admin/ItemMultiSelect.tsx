@@ -7,8 +7,6 @@ import { Input } from "@/components/ui/input";
 import type { InventoryOption } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 
-const MAX_SELECTED = 5;
-
 interface ItemMultiSelectProps {
   options: InventoryOption[];
   value: string[];
@@ -20,7 +18,7 @@ export function ItemMultiSelect({
   options,
   value,
   onChange,
-  max = MAX_SELECTED,
+  max,
 }: ItemMultiSelectProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -31,10 +29,8 @@ export function ItemMultiSelect({
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return options;
-    return options.filter(
-      (opt) =>
-        opt.itemName.toLowerCase().includes(normalized) ||
-        opt.category.toLowerCase().includes(normalized)
+    return options.filter((opt) =>
+      opt.itemName.toLowerCase().includes(normalized)
     );
   }, [options, query]);
 
@@ -48,12 +44,14 @@ export function ItemMultiSelect({
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, []);
 
+  const atMax = max !== undefined && value.length >= max;
+
   function toggle(itemId: string) {
     if (selectedSet.has(itemId)) {
       onChange(value.filter((id) => id !== itemId));
       return;
     }
-    if (value.length >= max) return;
+    if (atMax) return;
     onChange([...value, itemId]);
   }
 
@@ -83,7 +81,8 @@ export function ItemMultiSelect({
             autoFocus
           />
           <p className="mb-1 px-1 text-xs text-slate-500">
-            Select up to {max} items
+            Only items in this category. Unselect any item to hide it.
+            {max !== undefined ? ` Up to ${max}.` : ""}
           </p>
           <ul className="max-h-56 overflow-y-auto">
             {filtered.length === 0 ? (
@@ -91,7 +90,7 @@ export function ItemMultiSelect({
             ) : (
               filtered.map((opt) => {
                 const checked = selectedSet.has(opt.itemId);
-                const disabled = !checked && value.length >= max;
+                const disabled = !checked && atMax;
                 return (
                   <li key={opt.itemId}>
                     <button
@@ -111,12 +110,7 @@ export function ItemMultiSelect({
                       >
                         {checked ? <Check className="h-3 w-3" /> : null}
                       </span>
-                      <span className="min-w-0 flex-1 truncate">
-                        {opt.itemName}
-                        <span className="block truncate text-xs text-slate-500">
-                          {opt.category}
-                        </span>
-                      </span>
+                      <span className="min-w-0 flex-1 truncate">{opt.itemName}</span>
                     </button>
                   </li>
                 );

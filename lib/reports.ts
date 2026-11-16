@@ -1,11 +1,13 @@
-import { differenceInCalendarDays, parseISO } from "date-fns";
 import {
   addCalendarDays,
   isDateKeyInRange,
+  isValidDateKey,
+  resolveCustomDateRange,
   rollingDateRange,
   todayDateKey,
   transactionDateKey,
 } from "@/lib/dates";
+import { groupDestinationIssues } from "@/lib/destination-issues";
 import { DEFAULT_STOCK_DESTINATION } from "@/lib/types";
 import type { InventoryItem, StockCorrection, Transaction } from "@/lib/types";
 
@@ -17,21 +19,7 @@ export const REPORT_PERIOD_DAYS: Record<Exclude<ReportPeriod, "custom">, number>
   "4months": 120,
 };
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const MAX_CUSTOM_RANGE_DAYS = 366 * 2;
-
-export { todayDateKey };
-
-export function isValidDateKey(value: string): boolean {
-  if (!DATE_RE.test(value)) return false;
-  const [year, month, day] = value.split("-").map(Number);
-  const parsed = new Date(year, month - 1, day);
-  return (
-    parsed.getFullYear() === year &&
-    parsed.getMonth() === month - 1 &&
-    parsed.getDate() === day
-  );
-}
+export { todayDateKey, isValidDateKey };
 
 /** Inclusive rolling window: from = today - (days - 1), to = today. */
 export function presetDateRange(
@@ -58,22 +46,7 @@ export function resolveReportRange(params: {
   to?: string | null;
 }): { from: string; to: string } | { error: string } {
   if (params.period === "custom") {
-    const from = params.from?.trim() ?? "";
-    const to = params.to?.trim() ?? "";
-    if (!from || !to) {
-      return { error: "Custom period requires from and to dates (YYYY-MM-DD)." };
-    }
-    if (!isValidDateKey(from) || !isValidDateKey(to)) {
-      return { error: "Invalid date. Use YYYY-MM-DD." };
-    }
-    if (from > to) {
-      return { error: "From date must be on or before the to date." };
-    }
-    const span = differenceInCalendarDays(parseISO(to), parseISO(from)) + 1;
-    if (span > MAX_CUSTOM_RANGE_DAYS) {
-      return { error: "Custom range cannot exceed 2 years." };
-    }
-    return { from, to };
+    return resolveCustomDateRange(params.from, params.to);
   }
 
   const days = REPORT_PERIOD_DAYS[params.period];
@@ -201,6 +174,10 @@ export function reportDestinationTotals(
   return Array.from(totals.entries())
     .map(([destination, quantity]) => ({ destination, quantity }))
     .sort((a, b) => b.quantity - a.quantity);
+}
+
+export function reportDestinationIssues(transactions: Transaction[]) {
+  return groupDestinationIssues(transactions);
 }
 
 export type DatedStockMovement = {

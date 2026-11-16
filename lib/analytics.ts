@@ -13,8 +13,45 @@ import {
   type Transaction,
 } from "./types";
 import { isLowStock, isOutOfStock } from "./stock";
+import {
+  groupDestinationIssues,
+  type DestinationIssue,
+} from "@/lib/destination-issues";
+
+export type { DestinationIssue };
+export { groupDestinationIssues };
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+export type AnalyticsWindow = {
+  from: string;
+  to: string;
+  span: number;
+};
+
+export function analyticsWindowFromDays(days: number): AnalyticsWindow {
+  const span = days <= 0 ? 1 : days;
+  const { from, to } = rollingDateRange(span);
+  return { from, to, span };
+}
+
+export function analyticsWindowFromRange(
+  from: string,
+  to: string
+): AnalyticsWindow {
+  const span = Math.max(1, dateKeysInclusive(from, to).length);
+  return { from, to, span };
+}
+
+function resolveWindow(
+  days: number,
+  range?: { from?: string; to?: string }
+): AnalyticsWindow {
+  if (range?.from && range?.to) {
+    return analyticsWindowFromRange(range.from, range.to);
+  }
+  return analyticsWindowFromDays(days);
+}
 
 export type InventoryOption = {
   itemId: string;
@@ -39,6 +76,14 @@ export type DailyInOutPoint = {
   label: string;
   in: number;
   out: number;
+};
+
+/** Stock-in of one item on one calendar day. */
+export type StockInReceipt = {
+  date: string;
+  itemId: string;
+  itemName: string;
+  quantity: number;
 };
 
 export type ItemOutMatrix = {
@@ -167,10 +212,10 @@ export function stockHealthSnapshot(items: InventoryItem[]): StockHealthSnapshot
  */
 export function filterTransactionsByDays(
   transactions: Transaction[],
-  days: number
+  days: number,
+  range?: { from?: string; to?: string }
 ): Transaction[] {
-  const span = days <= 0 ? 1 : days;
-  const { from, to } = rollingDateRange(span);
+  const { from, to } = resolveWindow(days, range);
   return transactions.filter((tx) => {
     const day = transactionDateKey(tx.timestamp);
     return isDateKeyInRange(day, from, to);
@@ -215,10 +260,14 @@ export function dailyInOutMovement(
   transactions: Transaction[],
   items: InventoryItem[],
   days: number,
-  options?: { category?: string; destination?: string | null }
+  options?: {
+    category?: string;
+    destination?: string | null;
+    from?: string;
+    to?: string;
+  }
 ): DailyInOutPoint[] {
-  const span = days <= 0 ? 1 : days;
-  const { from, to } = rollingDateRange(span);
+  const { from, to, span } = resolveWindow(days, options);
   const dayKeys = dateKeysInclusive(from, to);
   const categoryByItemId = itemCategoryMap(items);
   const category = options?.category?.trim();
@@ -251,6 +300,50 @@ export function dailyInOutMovement(
     in: byDay.get(date)?.in ?? 0,
     out: byDay.get(date)?.out ?? 0,
   }));
+}
+
+/**
+ * Dated stock-in rows for the daily in-bar drill-down.
+ * Same category/range as dailyInOutMovement (destination does not apply).
+ */
+export function stockInReceipts(
+  transactions: Transaction[],
+  items: InventoryItem[],
+  days: number,
+  options?: { category?: string; from?: string; to?: string }
+): StockInReceipt[] {
+  const { from, to } = resolveWindow(days, options);
+  const categoryByItemId = itemCategoryMap(items);
+  const category = options?.category?.trim();
+  const totals = new Map<string, StockInReceipt>();
+
+  for (const tx of transactions) {
+    if (tx.type !== "in") continue;
+    const date = transactionDateKey(tx.timestamp);
+    if (!date || !isDateKeyInRange(date, from, to)) continue;
+    if (category && category !== "all") {
+      const cat = categoryByItemId.get(tx.itemId) ?? "Uncategorized";
+      if (cat !== category) continue;
+    }
+    const key = `${date}::${tx.itemId}`;
+    const current = totals.get(key);
+    if (current) {
+      current.quantity += tx.quantity;
+    } else {
+      totals.set(key, {
+        date,
+        itemId: tx.itemId,
+        itemName: tx.itemName,
+        quantity: tx.quantity,
+      });
+    }
+  }
+
+  return Array.from(totals.values()).sort((a, b) => {
+    if (a.date !== b.date) return b.date.localeCompare(a.date);
+    if (b.quantity !== a.quantity) return b.quantity - a.quantity;
+    return a.itemName.localeCompare(b.itemName);
+  });
 }
 
 /** @deprecated Prefer dailyInOutMovement */
@@ -302,10 +395,9 @@ export function destinationBreakdown(
   transactions: Transaction[],
   items: InventoryItem[],
   days: number,
-  options?: { category?: string }
+  options?: { category?: string; from?: string; to?: string }
 ): DestinationTotal[] {
-  const span = days <= 0 ? 1 : days;
-  const { from, to } = rollingDateRange(span);
+  const { from, to } = resolveWindow(days, options);
   const categoryByItemId = itemCategoryMap(items);
   const outs = filterOutTransactions(transactions, {
     from,
@@ -329,6 +421,28 @@ export function destinationBreakdown(
     .map(([destination, quantity]) => ({ destination, quantity }))
     .filter((row) => row.quantity > 0)
     .sort((a, b) => b.quantity - a.quantity);
+}
+
+/**
+ * Dated stock-out rows for the destination pie drill-down.
+ * Same category/range as destinationBreakdown (ignores destination filter).
+ */
+export function destinationIssues(
+  transactions: Transaction[],
+  items: InventoryItem[],
+  days: number,
+  options?: { category?: string; from?: string; to?: string }
+): DestinationIssue[] {
+  const { from, to } = resolveWindow(days, options);
+  const categoryByItemId = itemCategoryMap(items);
+  const outs = filterOutTransactions(transactions, {
+    from,
+    to,
+    category: options?.category,
+    categoryByItemId,
+    destination: "all",
+  });
+  return groupDestinationIssues(outs);
 }
 
 /** Per-item aggregates for a single calendar day (YYYY-MM-DD). */
@@ -384,10 +498,15 @@ export function itemDailyMovement(
 export function userActivityByDay(
   transactions: Transaction[],
   days: number,
-  options?: { destination?: string | null; category?: string; items?: InventoryItem[] }
+  options?: {
+    destination?: string | null;
+    category?: string;
+    items?: InventoryItem[];
+    from?: string;
+    to?: string;
+  }
 ): UserActivitySeries {
-  const span = days <= 0 ? 1 : days;
-  const { from, to } = rollingDateRange(span);
+  const { from, to } = resolveWindow(days, options);
   const dayKeys = dateKeysInclusive(from, to);
   const categoryByItemId = options?.items
     ? itemCategoryMap(options.items)
@@ -461,10 +580,13 @@ export function inventoryOptions(
     .sort((a, b) => a.itemName.localeCompare(b.itemName));
 }
 
+const COMPARE_DEFAULT_COUNT = 3;
+
 /**
  * Item out matrix for compare chart.
- * Span: today→1, 7→7, else min(pageDays, 30) for readability.
- * Series data covers all items (any category); topItemIds are category-scoped defaults.
+ * Span matches the page range so every daily value in the filter is plotted.
+ * Series data covers the selected category; topItemIds are at least three
+ * category items when the category has that many (usage first, then name).
  */
 export function itemOutMatrix(
   transactions: Transaction[],
@@ -473,23 +595,33 @@ export function itemOutMatrix(
   options?: {
     category?: string;
     destination?: string | null;
+    from?: string;
+    to?: string;
   }
 ): ItemOutMatrix {
-  const span =
-    daysForPage === 0 ? 1 : daysForPage === 7 ? 7 : Math.min(daysForPage, 30);
-  const { from, to } = rollingDateRange(span);
+  const { from, to, span } = resolveWindow(daysForPage, options);
   const dates = dateKeysInclusive(from, to);
   const labels = dates.map((d) => periodAxisLabel(d, span));
   const categoryByItemId = itemCategoryMap(items);
+  const selectedCategory = options?.category?.trim();
 
-  // Full series so the picker can compare across categories.
+  const categoryItems = items.filter((item) => {
+    if (!selectedCategory || selectedCategory === "all") return true;
+    return (item.category?.trim() || "Uncategorized") === selectedCategory;
+  });
+
   const outs = filterOutTransactions(transactions, {
     from,
     to,
+    category: options?.category,
+    categoryByItemId,
     destination: options?.destination,
   });
 
   const byItemId: Record<string, number[]> = {};
+  for (const item of categoryItems) {
+    byItemId[item.itemId] = dates.map(() => 0);
+  }
   for (const tx of outs) {
     const day = transactionDateKey(tx.timestamp);
     const dayIndex = dates.indexOf(day);
@@ -500,26 +632,23 @@ export function itemOutMatrix(
     byItemId[tx.itemId][dayIndex] += tx.quantity;
   }
 
-  // Default selection: top movers within the selected category only.
-  const categoryOuts = filterOutTransactions(transactions, {
-    from,
-    to,
-    category: options?.category,
-    categoryByItemId,
-    destination: options?.destination,
-  });
   const categoryTotals = new Map<string, number>();
-  for (const tx of categoryOuts) {
+  for (const item of categoryItems) {
+    const series = byItemId[item.itemId] ?? [];
     categoryTotals.set(
-      tx.itemId,
-      (categoryTotals.get(tx.itemId) ?? 0) + tx.quantity
+      item.itemId,
+      series.reduce((sum, value) => sum + value, 0)
     );
   }
 
-  const topItemIds = Array.from(categoryTotals.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([itemId]) => itemId);
+  const ranked = [...categoryItems].sort((a, b) => {
+    const byUsage =
+      (categoryTotals.get(b.itemId) ?? 0) - (categoryTotals.get(a.itemId) ?? 0);
+    if (byUsage !== 0) return byUsage;
+    return a.itemName.localeCompare(b.itemName);
+  });
+  const defaultCount = Math.min(COMPARE_DEFAULT_COUNT, ranked.length);
+  const topItemIds = ranked.slice(0, defaultCount).map((item) => item.itemId);
 
   return { from, to, dates, labels, byItemId, topItemIds };
 }

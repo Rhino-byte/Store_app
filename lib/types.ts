@@ -20,7 +20,9 @@ export const STOCK_DESTINATIONS = [
   "Hotel",
   "Kitchen",
   "House Keeping",
-  "Order"
+  "Order",
+  "Bar Maiyan",
+  "Bar MerryMary",
 ] as const;
 
 export type StockDestination = (typeof STOCK_DESTINATIONS)[number];

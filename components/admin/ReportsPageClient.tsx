@@ -2,14 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,8 +15,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DestinationPieChart } from "@/components/admin/DestinationPieChart";
 import { KitchenDailyReport } from "@/components/admin/KitchenDailyReport";
 import { fetchReport } from "@/lib/api-client";
+import type { DestinationIssue } from "@/lib/analytics";
 import type {
   ReportCorrectionsSummary,
   ReportDestinationTotal,
@@ -41,8 +35,6 @@ const PERIOD_OPTIONS: Array<{ label: string; value: ReportPeriod }> = [
   { label: "4 months", value: "4months" },
   { label: "Custom", value: "custom" },
 ];
-
-const PIE_COLORS = ["#047857", "#b45309", "#1d4ed8", "#7c3aed", "#be123c"];
 
 type ReportSections = {
   stockIn: boolean;
@@ -73,6 +65,7 @@ type ReportData = {
   stockOut: ReportStockOutRow[];
   stockBalance: ReportStockBalanceRow[];
   destinationTotals: ReportDestinationTotal[];
+  destinationIssues?: DestinationIssue[];
   correctionsSummary?: ReportCorrectionsSummary;
 };
 
@@ -463,41 +456,20 @@ export function ReportsPageClient() {
                   <h2 className="text-lg font-semibold text-slate-900">
                     Destination distribution
                   </h2>
-                  {data.destinationTotals.length === 0 ? (
-                    <EmptyBlock message="No stock-out destinations in this period." />
-                  ) : (
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-base">
-                          Stock out by destination
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="h-72 sm:h-80">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={data.destinationTotals}
-                              dataKey="quantity"
-                              nameKey="destination"
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={100}
-                              label
-                            >
-                              {data.destinationTotals.map((entry, index) => (
-                                <Cell
-                                  key={entry.destination}
-                                  fill={PIE_COLORS[index % PIE_COLORS.length]}
-                                />
-                              ))}
-                            </Pie>
-                            <Tooltip />
-                            <Legend />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </CardContent>
-                    </Card>
-                  )}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">
+                        Stock out by destination
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <DestinationPieChart
+                        totals={data.destinationTotals}
+                        issues={data.destinationIssues ?? []}
+                        emptyMessage="No stock-out destinations in this period."
+                      />
+                    </CardContent>
+                  </Card>
                 </section>
               )}
             </>

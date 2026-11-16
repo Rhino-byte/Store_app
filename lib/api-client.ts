@@ -1,9 +1,11 @@
 import type {
   DailyInOutPoint,
   DailyStockItem,
+  DestinationIssue,
   DestinationTotal,
   InventoryOption,
   ItemOutMatrix,
+  StockInReceipt,
   StockHealthSnapshot,
   UserActivitySeries,
 } from "@/lib/analytics";
@@ -32,9 +34,13 @@ export type AnalyticsPayload = {
   destinations: string[];
   category: string;
   destination: string;
+  from: string;
+  to: string;
   inventoryOptions: InventoryOption[];
   dailyMovement: DailyInOutPoint[];
+  stockInReceipts: StockInReceipt[];
   destinationTotals: DestinationTotal[];
+  destinationIssues: DestinationIssue[];
   itemOuts: ItemOutMatrix;
   userActivity: UserActivitySeries;
 };
@@ -207,11 +213,18 @@ export async function fetchReport(params: {
 export async function fetchAnalytics(
   days: number,
   headers: HeadersInit,
-  filters?: { category?: string; destination?: string }
+  filters?: {
+    category?: string;
+    destination?: string;
+    from?: string;
+    to?: string;
+  }
 ): Promise<AnalyticsPayload> {
   const search = new URLSearchParams({ days: String(days) });
   if (filters?.category) search.set("category", filters.category);
   if (filters?.destination) search.set("destination", filters.destination);
+  if (filters?.from) search.set("from", filters.from);
+  if (filters?.to) search.set("to", filters.to);
 
   const response = await fetch(`/api/analytics?${search.toString()}`, {
     headers,
